@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gold-investment
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATA_DIR
+        value: ./data
+      - key: SELL_WORKFLOW_ENABLED
+        value: "false"
+      - key: IDENTITY_PROVIDER_ENABLED
+        value: "false"
+      - key: CRYPTO_PAYMENTS_ENABLED
+        value: "false"

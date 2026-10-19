@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.log
+dist/
+ADMIN-CREDENTIALS.txt
+data/
+.env*
+!.env.example

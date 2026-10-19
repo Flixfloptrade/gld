@@ -1,0 +1,28 @@
+{
+  "name": "gold-investment-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "React precious-metals storefront with server-validated demo checkout",
+  "scripts": {
+    "dev": "concurrently -k \"node server.js\" \"vite --host 0.0.0.0\"",
+    "build": "vite build",
+    "start": "node server.js",
+    "admin:setup": "node scripts/setup-admin.js",
+    "admin:start": "node admin-server.js",
+    "admin:stack": "node scripts/admin-stack.js"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "1.1.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.1.2",
+    "vite": "^6.3.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
