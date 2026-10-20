@@ -11,6 +11,8 @@ services:
         value: 20
       - key: DATA_DIR
         value: ./data
+      - key: ADMIN_EMAIL
+        value: lasisfantasen@hotmail.com
       - key: SELL_WORKFLOW_ENABLED
         value: "false"
       - key: IDENTITY_PROVIDER_ENABLED

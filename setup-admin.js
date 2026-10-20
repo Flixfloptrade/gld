@@ -3,7 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const readline = require('node:readline');
 
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(__dirname);
 const envPath = path.join(root, '.env');
 const credentialsPath = path.join(root, 'ADMIN-CREDENTIALS.txt');
 const suppliedEmail = process.argv[2];
