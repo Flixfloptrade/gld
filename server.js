@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createStore } = require('./scripts/durable-store');
+const neonStore = require('./scripts/neon-store');
 const { createSecureDocuments } = require('./scripts/secure-documents');
 
 const ROOT = __dirname;
@@ -23,16 +24,46 @@ const products = [
   { id: 'ag-1oz-eagle', slug: 'american-silver-eagle-1oz', name: 'American Silver Eagle', metal: 'silver', weightOz: 1, purity: '99.9% fine silver', type: 'Coin', premiumPct: 0.28, stock: 120, image: 'silver-coin', badge: 'Iconic' },
   { id: 'ag-5oz-bar', slug: 'silver-bar-5oz', name: '5 oz Silver Bar', metal: 'silver', weightOz: 5, purity: '99.9% fine silver', type: 'Bar', premiumPct: 0.24, stock: 35, image: 'silver-five', badge: 'Great value' }
 ];
-const persistentStore = createStore(ROOT, products);
+// Keep the encrypted file store only as a one-time import source when Neon is empty.
+// All ongoing application-state writes go to Neon PostgreSQL.
+const legacyStore = createStore(ROOT, products);
 const secureDocuments = createSecureDocuments(ROOT);
-const savedState = persistentStore.load();
-const state = {
-  orders: savedState.orders,
-  sales: savedState.sales,
-  users: new Map(savedState.users.map(user => [user.email, user])),
-  usersById: new Map(savedState.users.map(user => [user.id, user])),
-  audit: savedState.audit,
-};
+const state = { orders: [], sales: [], users: new Map(), usersById: new Map(), audit: [] };
+
+function applySavedState(savedState) {
+  for (const savedProduct of savedState.products || []) {
+    const product = products.find(item => item.id === savedProduct.id);
+    if (product) {
+      if (Number.isInteger(savedProduct.stock) && savedProduct.stock >= 0) product.stock = savedProduct.stock;
+      if (Number.isFinite(savedProduct.premiumPct) && savedProduct.premiumPct >= 0 && savedProduct.premiumPct <= 1) product.premiumPct = savedProduct.premiumPct;
+      if (typeof savedProduct.name === 'string' && savedProduct.name.length >= 2 && savedProduct.name.length <= 120) product.name = savedProduct.name;
+    }
+  }
+  state.orders = savedState.orders;
+  state.sales = savedState.sales;
+  state.users = new Map(savedState.users.map(user => [user.email, user]));
+  state.usersById = new Map(savedState.users.map(user => [user.id, user]));
+  state.audit = savedState.audit;
+}
+
+async function initializePersistentState() {
+  let savedState = await neonStore.load();
+  if (!savedState) {
+    const legacyFile = path.join(legacyStore.dataDir, 'store.enc');
+    if (fs.existsSync(legacyFile)) {
+      console.log('Neon is empty; importing the existing encrypted local application store once.');
+      savedState = legacyStore.load();
+    } else {
+      savedState = { users: [], orders: [], sales: [], audit: [], products };
+    }
+    applySavedState(savedState);
+    await persistState();
+    console.log('Initial application state saved to Neon PostgreSQL.');
+    return;
+  }
+  applySavedState(savedState);
+  console.log(`Application state loaded from Neon (customers: ${state.users.size}, orders: ${state.orders.length}).`);
+}
 const quotes = new Map();
 const cryptoVerificationLocks = new Set();
 const sessions = new Map();
@@ -179,8 +210,8 @@ function send(res, status, data, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(data));
 }
-function persistState() {
-  persistentStore.save({
+async function persistState() {
+  await neonStore.save({
     users: [...state.users.values()],
     orders: state.orders,
     sales: state.sales,
@@ -188,11 +219,11 @@ function persistState() {
     products,
   });
 }
-function log(action, detail) {
+async function log(action, detail) {
   state.audit.push({ at: new Date().toISOString(), action, detail });
-  persistState();
+  await persistState();
 }
-function releaseExpiredCryptoReservations() {
+async function releaseExpiredCryptoReservations() {
   const now = Date.now(); let changed = false;
   for (const order of state.orders) {
     const payment = order.cryptoPayment;
@@ -203,7 +234,7 @@ function releaseExpiredCryptoReservations() {
     payment.inventoryReserved = false; payment.status = 'expired'; order.paymentStatus = 'expired'; order.status = 'expired'; changed = true;
     state.audit.push({ at: new Date().toISOString(), action: 'crypto_payment_expired', detail: { orderId: order.id, hadSubmittedTx: Boolean(payment.txId) } });
   }
-  if (changed) persistState();
+  if (changed) await persistState();
 }
 function adminTokenFromRequest(req) {
   const authorization = String(req.headers.authorization || '');
@@ -293,7 +324,7 @@ const server = http.createServer(async (req, res) => {
       if (email !== configuredEmail || !crypto.timingSafeEqual(candidate, expected)) return send(res, 401, { error: 'Admin email or password is incorrect.' });
       const token = crypto.randomBytes(32).toString('base64url');
       adminSessions.set(token, { email, expiresAt: Date.now() + 8 * 60 * 60_000 });
-      log('admin_login_preview', { email });
+      await log('admin_login_preview', { email });
       return send(res, 200, { token, expiresInSeconds: 8 * 60 * 60 }, { 'Cache-Control': 'no-store' });
     }
     if (req.method === 'POST' && url.pathname === '/api/admin/logout') {
@@ -322,7 +353,7 @@ const server = http.createServer(async (req, res) => {
       const user = { id: crypto.randomUUID(), name, firstName, lastName, email, phone: '', country, address, city, region, postalCode, verificationStatus: 'not_started', salt: salt.toString('hex'), passwordHash, createdAt: new Date().toISOString() };
       state.users.set(email, user); state.usersById.set(user.id, user);
       const token = crypto.randomBytes(32).toString('base64url'); sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
-      log('customer_signup_preview', { userId: user.id });
+      await log('customer_signup_preview', { userId: user.id });
       return send(res, 201, { user: publicUser(user), mode: 'preview' }, { 'Set-Cookie': sessionCookie(token, req) });
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {
@@ -332,7 +363,7 @@ const server = http.createServer(async (req, res) => {
       const candidate = crypto.scryptSync(password, Buffer.from(user.salt, 'hex'), 64);
       if (!crypto.timingSafeEqual(candidate, Buffer.from(user.passwordHash, 'hex'))) return send(res, 401, { error: 'Email or password is incorrect.' });
       const token = crypto.randomBytes(32).toString('base64url'); sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
-      log('customer_login_preview', { userId: user.id });
+      await log('customer_login_preview', { userId: user.id });
       return send(res, 200, { user: publicUser(user), mode: 'preview' }, { 'Set-Cookie': sessionCookie(token, req) });
     }
     if (req.method === 'POST' && url.pathname === '/api/account/password') {
@@ -356,7 +387,7 @@ const server = http.createServer(async (req, res) => {
       for (const [token, activeSession] of sessions) if (activeSession.userId === user.id) sessions.delete(token);
       const token = crypto.randomBytes(32).toString('base64url');
       sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
-      log('customer_password_changed_preview', { userId: user.id });
+      await log('customer_password_changed_preview', { userId: user.id });
       return send(res, 200, { message: 'Password has been changed successfully.' }, { 'Set-Cookie': sessionCookie(token, req) });
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
@@ -394,7 +425,7 @@ const server = http.createServer(async (req, res) => {
       if (previous) secureDocuments.remove(previous.fileId);
       user.verificationDocuments = documents.filter(document => document.side !== side);
       user.verificationDocuments.push({ side, fileId, mimeType: detected.mime, extension: detected.ext, sizeBytes: file.length, uploadedAt: new Date().toISOString() });
-      log('customer_verification_document_uploaded', { userId: user.id, side, sizeBytes: file.length, mimeType: detected.mime });
+      await log('customer_verification_document_uploaded', { userId: user.id, side, sizeBytes: file.length, mimeType: detected.mime });
       return send(res, 201, { ok: true, document: { side, mimeType: detected.mime, sizeBytes: file.length, uploadedAt: user.verificationDocuments.find(document => document.side === side).uploadedAt }, message: 'Document encrypted and saved for admin review.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/account/verification') {
@@ -419,7 +450,7 @@ const server = http.createServer(async (req, res) => {
       user.verificationIssuingCountry = issuingCountry;
       user.manualDocumentReviewAt = null;
       user.verificationMethod = null;
-      log('admin_identity_review_requested_preview', { userId: user.id, submittedAt: user.verificationSubmittedAt, documentType, issuingCountry, documentSides: requiredSides, documentsReceivedByServer: true });
+      await log('admin_identity_review_requested_preview', { userId: user.id, submittedAt: user.verificationSubmittedAt, documentType, issuingCountry, documentSides: requiredSides, documentsReceivedByServer: true });
       return send(res, 202, { customer: publicUser(user), message: 'Your request is in the admin review queue.' });
     }
     if (req.method === 'GET' && url.pathname === '/api/account/dashboard') {
@@ -436,7 +467,7 @@ const server = http.createServer(async (req, res) => {
       if (input.confirmation !== 'REQUEST_DELETION') return send(res, 400, { error: 'Confirm that you understand account deletion removes your records and requires new registration and verification.' });
       if (user.accountDeletionRequestedAt) return send(res, 409, { error: 'Your account deletion request is already pending admin review.' });
       user.accountDeletionRequestedAt = new Date().toISOString();
-      log('customer_account_deletion_requested', { userId: user.id, requestedAt: user.accountDeletionRequestedAt });
+      await log('customer_account_deletion_requested', { userId: user.id, requestedAt: user.accountDeletionRequestedAt });
       return send(res, 202, { customer: publicUser(user), message: 'Your account deletion request has been sent to the admin. Your account remains active until an admin completes the deletion.' });
     }
     if (req.method === 'PATCH' && url.pathname === '/api/account/profile') {
@@ -449,7 +480,7 @@ const server = http.createServer(async (req, res) => {
       const previousEmail = user.email; state.users.delete(previousEmail); user.firstName = firstName; user.lastName = lastName; user.name = `${firstName} ${lastName}`; user.email = email; user.phone = phone; user.country = country; user.address = address; user.city = city; user.region = region; user.postalCode = postalCode; state.users.set(email, user);
       for (const order of state.orders) if (order.customer.email === previousEmail) Object.assign(order.customer, { name: user.name, email, country, address, city, region, postalCode });
       for (const order of state.sales) if (order.customer.email === previousEmail) Object.assign(order.customer, { name: user.name, email, country });
-      log('customer_profile_updated_preview', { userId: user.id });
+      await log('customer_profile_updated_preview', { userId: user.id });
       return send(res, 200, { customer: publicUser(user), message: 'Your account details were updated.' });
     }
     const paymentStatusMatch = url.pathname.match(/^\/api\/account\/orders\/([^/]+)\/payment-status$/);
@@ -528,7 +559,7 @@ const server = http.createServer(async (req, res) => {
       const now = Date.now(); const payment = { quoteId, asset, network, address: receiveAddress, tokenContract: token?.contract || null, decimals: token?.decimals || null, chainId: token?.chainId || null, amountUnits, amountToken, rateUsd, amountSatoshis, amountBTC: isBitcoin ? amountToken : null, expiresAt: new Date(now + CRYPTO_WINDOW_MS).toISOString(), status: 'awaiting_payment', inventoryReserved: true, txId: null };
       const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_crypto_payment', paymentMethod: 'crypto', paymentStatus: 'awaiting_crypto', fulfillmentStatus: 'unfulfilled', custodyPreference: quote.custodyPreference, createdAt: new Date(now).toISOString(), customer: { name: user.name, email: user.email, address: user.address, city: user.city, region: user.region, country: user.country, postalCode: user.postalCode }, lines: quote.lines, subtotalCents: quote.subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents: quote.totalCents, currency: 'USD', cryptoPayment: payment };
       state.orders.push(order);
-      log('crypto_payment_intent_created', { orderId: order.id, asset, network, expiresAt: payment.expiresAt, totalCents: order.totalCents });
+      await log('crypto_payment_intent_created', { orderId: order.id, asset, network, expiresAt: payment.expiresAt, totalCents: order.totalCents });
       return send(res, 201, { orderId: order.id, payment: { asset, network, address: receiveAddress, amount: amountToken, currency: asset, rateUsd, expiresAt: payment.expiresAt, status: payment.status }, message: `${asset} payment request created. Send the exact amount on ${token?.networkName || 'Bitcoin'} before the timer expires, then submit the transaction ID for server verification.` });
     }
     const cryptoVerifyMatch = url.pathname.match(/^\/api\/crypto\/payments\/([^/]+)\/verify$/);
@@ -570,7 +601,7 @@ const server = http.createServer(async (req, res) => {
         cryptoVerificationLocks.delete(lockKey);
         payment.txId = txId; payment.transactionSubmittedAt ||= new Date().toISOString(); payment.manualReviewRequestedAt = new Date().toISOString(); payment.confirmationDeadlineAt = null; payment.status = 'pending_admin_review';
         order.paymentStatus = 'pending_admin_review'; order.status = 'pending_admin_review';
-        log('crypto_payment_manual_review_requested', { orderId: order.id, txId, network: payment.network, asset: payment.asset, reason: 'on_chain_verifier_unavailable' });
+        await log('crypto_payment_manual_review_requested', { orderId: order.id, txId, network: payment.network, asset: payment.asset, reason: 'on_chain_verifier_unavailable' });
         return send(res, 202, { paid: false, status: 'pending_admin_review', orderId: order.id, message: 'Your transaction ID was submitted for manual admin review because the automatic network checker is unavailable. The order will not be credited until an admin verifies the blockchain record and approves it.' });
       }
       cryptoVerificationLocks.delete(lockKey);
@@ -580,11 +611,11 @@ const server = http.createServer(async (req, res) => {
       if (result.confirmations < requiredConfirmations) {
         payment.status = 'pending_confirmations';
         order.paymentStatus = 'pending_confirmations'; order.status = 'pending_confirmations';
-        log('crypto_transaction_seen_pending', { orderId: order.id, txId, network: payment.network, confirmations: result.confirmations });
+        await log('crypto_transaction_seen_pending', { orderId: order.id, txId, network: payment.network, confirmations: result.confirmations });
         return send(res, 202, { paid: false, status: 'pending_confirmations', confirmations: result.confirmations, requiredConfirmations, message: `Transaction found and amount matched. Waiting for ${requiredConfirmations} ${payment.network} confirmations before it can be sent to admin review.` });
       }
       order.paymentStatus = 'pending_admin_review'; order.status = 'pending_admin_review'; payment.status = 'pending_admin_review'; payment.chainVerifiedAt = new Date().toISOString(); payment.receivedUnits = result.receivedUnits; payment.confirmationDeadlineAt = null;
-      log('crypto_payment_awaiting_admin_review', { orderId: order.id, txId, network: payment.network, asset: payment.asset, confirmations: result.confirmations, receivedUnits: result.receivedUnits });
+      await log('crypto_payment_awaiting_admin_review', { orderId: order.id, txId, network: payment.network, asset: payment.asset, confirmations: result.confirmations, receivedUnits: result.receivedUnits });
       return send(res, 202, { paid: false, status: 'pending_admin_review', confirmations: result.confirmations, orderId: order.id, message: 'Your transaction passed the on-chain checks and is pending admin approval. Your account will be credited after the admin approves it.' });
     }
     const cryptoCancelMatch = url.pathname.match(/^\/api\/crypto\/payments\/([^/]+)\/cancel$/);
@@ -598,7 +629,7 @@ const server = http.createServer(async (req, res) => {
       if (payment.txId || payment.chainVerifiedAt || order.paymentStatus === 'pending_admin_review' || order.paymentStatus === 'paid') return send(res, 409, { error: 'This request has a submitted transaction. It cannot be cancelled; wait for admin review or contact customer care.' });
       if (payment.inventoryReserved) { for (const line of order.lines || []) { const product = products.find(item => item.id === line.productId); if (product) product.stock += line.quantity; } payment.inventoryReserved = false; }
       order.status = 'cancelled'; order.paymentStatus = 'cancelled'; payment.status = 'cancelled';
-      log('crypto_payment_cancelled', { orderId: order.id, customerEmail: user.email });
+      await log('crypto_payment_cancelled', { orderId: order.id, customerEmail: user.email });
       return send(res, 200, { cancelled: true, message: 'Payment request cancelled. No payment was recorded.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/orders') {
@@ -627,7 +658,7 @@ const server = http.createServer(async (req, res) => {
       const totalCents = quote.totalCents;
       quotes.delete(input.quoteId);
       const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_payment_setup', paymentStatus: 'not_collected_preview', fulfillmentStatus: 'unfulfilled', custodyPreference, createdAt: new Date().toISOString(), customer: { name, email, address, city, region, country, postalCode }, lines, subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents, currency: 'USD' };
-      state.orders.push(order); log('order_created_preview', { id: order.id, totalCents });
+      state.orders.push(order); await log('order_created_preview', { id: order.id, totalCents });
       return send(res, 201, { order: { id: order.id, status: order.status, paymentStatus: order.paymentStatus, fulfillmentStatus: order.fulfillmentStatus, custodyPreference, total: money(totalCents), currency: 'USD' }, message: custodyPreference === 'vault' ? 'Preview vault preference recorded. No bullion was allocated or stored and no payment was collected.' : 'Preview delivery preference recorded. No payment was collected and no shipment was created.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/sell/quote') {
@@ -649,7 +680,7 @@ const server = http.createServer(async (req, res) => {
       if (!quote || quote.type !== 'sell' || quote.expiresAt < Date.now()) return send(res, 409, { error: 'Sell quote expired or invalid. Request a new quote.' });
       quotes.delete(input.quoteId);
       const order = { id: `GS-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_manual_review_preview', createdAt: new Date().toISOString(), metal: quote.metal, weightOz: quote.weightOz, estimatedPayoutCents: quote.buybackCents, currency: 'USD', customer: { email: session.user.email, name: session.user.name, country: session.user.country } };
-      state.sales.push(order); log('sell_request_preview', { id: order.id, metal: order.metal, estimatedPayoutCents: order.estimatedPayoutCents });
+      state.sales.push(order); await log('sell_request_preview', { id: order.id, metal: order.metal, estimatedPayoutCents: order.estimatedPayoutCents });
       return send(res, 201, { sellOrder: { id: order.id, status: order.status, estimatedPayout: money(order.estimatedPayoutCents), currency: 'USD' }, message: 'Preview sell request recorded for manual review. No metal was shipped and no payout was made.' });
     }
     const adminDocumentsMatch = url.pathname.match(/^\/api\/admin\/customers\/([^/]+)\/documents(?:\/([^/]+))?$/);
@@ -669,7 +700,7 @@ const server = http.createServer(async (req, res) => {
       if (!viewedCustomers) { viewedCustomers = new Map(); adminDocumentViews.set(token, viewedCustomers); }
       if (!viewedCustomers.has(user.id)) viewedCustomers.set(user.id, new Set());
       viewedCustomers.get(user.id).add(side);
-      log('admin_identity_document_viewed', { customerId: user.id, side });
+      await log('admin_identity_document_viewed', { customerId: user.id, side });
       const filename = `${side}.${document.extension}`;
       res.writeHead(200, { 'Content-Type': document.mimeType, 'Content-Length': content.length, 'Content-Disposition': `inline; filename="${filename}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
       return res.end(content);
@@ -685,7 +716,7 @@ const server = http.createServer(async (req, res) => {
       if (user.verificationStatus !== 'under_review' || input.confirmation !== 'REVIEWED' || !requiredSides.every(side => (user.verificationDocuments || []).some(document => document.side === side) && viewed.has(side))) return send(res, 409, { error: 'Open all three submitted documents, then confirm your manual review.' });
       user.manualDocumentReviewAt = new Date().toISOString();
       user.manualDocumentReviewer = adminSessions.get(adminTokenFromRequest(req))?.email || 'admin';
-      log('admin_identity_documents_reviewed', { customerId: user.id, documentSides: requiredSides, reviewedAt: user.manualDocumentReviewAt });
+      await log('admin_identity_documents_reviewed', { customerId: user.id, documentSides: requiredSides, reviewedAt: user.manualDocumentReviewAt });
       return send(res, 200, { ok: true, message: 'Document review recorded. You may now approve or reject this verification request.' });
     }
     const cryptoDecisionMatch = url.pathname.match(/^\/api\/admin\/orders\/([^/]+)\/payment-decision$/);
@@ -702,12 +733,12 @@ const server = http.createServer(async (req, res) => {
       if (decision === 'approve') {
         order.paymentStatus = 'paid'; order.status = 'paid'; payment.status = 'approved_by_admin'; payment.adminApprovedAt = new Date().toISOString(); payment.adminReviewer = reviewer;
         if (payment.quoteId) quotes.delete(payment.quoteId);
-        log('crypto_payment_admin_approved', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email });
+        await log('crypto_payment_admin_approved', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email });
         return send(res, 200, { order, message: 'On-chain transaction approved. The order is now paid and recorded on the customer account.' });
       }
       if (payment.inventoryReserved) { for (const line of order.lines || []) { const product = products.find(item => item.id === line.productId); if (product) product.stock += line.quantity; } payment.inventoryReserved = false; }
       order.paymentStatus = 'payment_rejected'; order.status = 'payment_rejected'; payment.status = 'rejected_by_admin'; payment.adminRejectedAt = new Date().toISOString(); payment.adminReviewer = reviewer;
-      log('crypto_payment_admin_rejected', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email });
+      await log('crypto_payment_admin_rejected', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email });
       return send(res, 200, { order, message: 'Transaction rejected. It was not credited to the customer; contact the customer if funds were transferred.' });
     }
     if (req.method === 'PATCH' && url.pathname.startsWith('/api/admin/')) {
@@ -722,7 +753,7 @@ const server = http.createServer(async (req, res) => {
         if (input.stock !== undefined) { const stock = Number(input.stock); if (!Number.isInteger(stock) || stock < 0 || stock > 1_000_000) return send(res, 400, { error: 'Stock must be a whole number between 0 and 1,000,000.' }); product.stock = stock; }
         if (input.premiumPct !== undefined) { const premiumPct = Number(input.premiumPct); if (!Number.isFinite(premiumPct) || premiumPct < 0 || premiumPct > 1) return send(res, 400, { error: 'Premium must be between 0% and 100%.' }); product.premiumPct = premiumPct; }
         if (input.name !== undefined) { const name = String(input.name).trim(); if (name.length < 2 || name.length > 120) return send(res, 400, { error: 'Product name must be between 2 and 120 characters.' }); product.name = name; }
-        log('admin_product_updated_preview', { productId: product.id, stock: product.stock, premiumPct: product.premiumPct });
+        await log('admin_product_updated_preview', { productId: product.id, stock: product.stock, premiumPct: product.premiumPct });
         return send(res, 200, { product: pricing(product), message: 'Preview product updated in memory. Changes reset when the server stops.' });
       }
       if (orderMatch) {
@@ -732,7 +763,7 @@ const server = http.createServer(async (req, res) => {
         if (!allowed.includes(input.fulfillmentStatus)) return send(res, 400, { error: 'Choose a valid fulfillment status.' });
         if (['shipped', 'delivered'].includes(input.fulfillmentStatus) && order.paymentStatus !== 'paid') return send(res, 409, { error: 'Shipping is blocked until a verified payment integration records settlement.' });
         order.fulfillmentStatus = input.fulfillmentStatus;
-        log('admin_fulfillment_updated_preview', { orderId: order.id, fulfillmentStatus: order.fulfillmentStatus });
+        await log('admin_fulfillment_updated_preview', { orderId: order.id, fulfillmentStatus: order.fulfillmentStatus });
         return send(res, 200, { order, message: 'Preview fulfillment status updated.' });
       }
       if (customerMatch) {
@@ -744,7 +775,7 @@ const server = http.createServer(async (req, res) => {
         user.identityProviderVerified = false;
         user.verificationMethod = input.verificationStatus === 'verified' ? 'manual_admin_review' : null;
         user.verificationReviewedAt = ['verified', 'rejected'].includes(input.verificationStatus) ? new Date().toISOString() : null;
-        log('admin_customer_verification_updated_preview', { customerId: user.id, verificationStatus: user.verificationStatus });
+        await log('admin_customer_verification_updated_preview', { customerId: user.id, verificationStatus: user.verificationStatus });
         return send(res, 200, { customer: publicUser(user), verificationStatus: user.verificationStatus, message: 'Preview verification status updated.' });
       }
       return send(res, 404, { error: 'Admin management route not found.' });
@@ -772,18 +803,34 @@ const server = http.createServer(async (req, res) => {
       state.usersById.delete(user.id);
       for (const [sessionToken, session] of sessions) if (session.userId === user.id) sessions.delete(sessionToken);
       for (const customerViews of adminDocumentViews.values()) customerViews.delete(user.id);
-      log('admin_customer_personal_data_erased', { removedOrders, removedSellRequests });
+      await log('admin_customer_personal_data_erased', { removedOrders, removedSellRequests });
       return send(res, 200, { ok: true, message: `The account and linked personal records were permanently removed from the active application store (${removedOrders} purchase records and ${removedSellRequests} sell records).`, removedOrders, removedSellRequests });
     }
     if (req.method === 'GET' && url.pathname === '/api/admin/summary') {
       if (!adminAuthorized(req)) return send(res, 401, { error: 'Admin authorization required. Sign in to the staff portal again.' });
-      releaseExpiredCryptoReservations();
+      await releaseExpiredCryptoReservations();
       return send(res, 200, { mode: 'preview', inventory: products.map(pricing), prices: { source: priceSource, asOf: priceAsOf, metals: { ...spot } }, orders: state.orders, sellOrders: state.sales, customers: [...state.users.values()].map(user => ({ ...publicUser(user), verificationStatus: user.verificationStatus || 'not_started' })), customerCount: state.users.size, audit: [...state.audit].reverse() });
     }
     if (req.method === 'GET') return serveFile(req, res, url.pathname);
     return send(res, 405, { error: 'Method not allowed' });
-  } catch (error) { return send(res, 400, { error: error.message || 'Request failed.' }); }
+  } catch (error) {
+    console.error('Request failed:', error.message);
+    return send(res, 500, { error: 'The request could not be completed. Please try again.' });
+  }
 });
-releaseExpiredCryptoReservations();
-setInterval(releaseExpiredCryptoReservations, 30_000).unref();
-server.listen(PORT, () => console.log(`Gold Investment preview running at http://localhost:${PORT}`));
+async function startServer() {
+  await initializePersistentState();
+  await releaseExpiredCryptoReservations();
+  const expiryTimer = setInterval(() => {
+    releaseExpiredCryptoReservations().catch(error => {
+      console.error('Failed to persist expired crypto reservations:', error.message);
+    });
+  }, 30_000);
+  expiryTimer.unref();
+  server.listen(PORT, () => console.log(`Gold Investment preview running at http://localhost:${PORT}`));
+}
+
+startServer().catch(error => {
+  console.error('Server startup failed; refusing to start without a valid Neon state:', error.message);
+  process.exitCode = 1;
+});
