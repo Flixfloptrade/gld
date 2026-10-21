@@ -3,14 +3,23 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 function createStore(root, products) {
-  const dataDir = path.resolve(root, process.env.DATA_DIR || 'data');
+  const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+
+  const dataDir = process.env.DATA_DIR
+    ? path.resolve(root, process.env.DATA_DIR)
+    : isRender
+      ? '/var/data'
+      : path.resolve(root, 'data');
+
   const dataFile = path.join(dataDir, 'store.enc');
   const keyFile = path.join(dataDir, '.encryption-key');
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 
   let key;
   if (process.env.DATA_ENCRYPTION_KEY) {
-    if (!/^[a-f0-9]{64}$/i.test(process.env.DATA_ENCRYPTION_KEY)) throw new Error('DATA_ENCRYPTION_KEY must be 64 hexadecimal characters (32 bytes).');
+    if (!/^[a-f0-9]{64}$/i.test(process.env.DATA_ENCRYPTION_KEY)) {
+      throw new Error('DATA_ENCRYPTION_KEY must be 64 hexadecimal characters (32 bytes).');
+    }
     key = Buffer.from(process.env.DATA_ENCRYPTION_KEY, 'hex');
   } else if (fs.existsSync(keyFile)) {
     key = fs.readFileSync(keyFile);
@@ -26,12 +35,14 @@ function createStore(root, products) {
     const ciphertext = Buffer.concat([cipher.update(JSON.stringify(snapshot), 'utf8'), cipher.final()]);
     const envelope = Buffer.concat([Buffer.from('GI01'), iv, cipher.getAuthTag(), ciphertext]);
     const tempFile = `${dataFile}.${process.pid}.tmp`;
+
     fs.writeFileSync(tempFile, envelope, { mode: 0o600 });
     fs.renameSync(tempFile, dataFile);
   }
 
   function load() {
     if (!fs.existsSync(dataFile)) return { users: [], orders: [], sales: [], audit: [], products };
+
     try {
       const envelope = fs.readFileSync(dataFile);
       if (envelope.length < 32 || envelope.subarray(0, 4).toString() !== 'GI01') throw new Error('Unknown data format.');
