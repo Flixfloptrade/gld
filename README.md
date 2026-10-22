@@ -138,3 +138,16 @@ This project includes a Node.js API, so **GitHub Pages alone will not run the co
 4. Open the public URL Render provides and check the home page and `/api/health`.
 
 Before handling real customers, payments, identity documents, or investment funds, arrange persistent encrypted storage, configure production secrets in the host's environment settings, review authentication/security, and obtain the appropriate legal and compliance advice. The included Render configuration is a deployment starting point, not a production-readiness or financial-regulatory certification. The separate admin portal is not automatically exposed by this customer web service.
+
+
+## Neon PostgreSQL setup
+
+1. Use Node.js 20 or newer.
+2. In the Neon console, open your project and choose **Connect**. Copy the **pooled** connection string (the host usually contains `-pooler`).
+3. Copy `.env.example` to `.env`, then replace the `DATABASE_URL` placeholder with your real pooled connection string. Do not commit or share `.env`.
+4. Install dependencies with `npm ci`.
+5. Check the connection with `npm run db:test`.
+6. Create/check the application table with `npm run db:init`. The server also creates this table automatically at startup if it is missing.
+7. Start the app with `npm start` or `npm run dev`.
+
+If Neon credentials were previously committed, pasted into a chat, or included in an archive, reset the database password in Neon and update the `DATABASE_URL` environment variable wherever the app is deployed.

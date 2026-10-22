@@ -1,5 +1,5 @@
 
-require('dotenv').config();
+require('dotenv').config({ path: require('node:path').join(__dirname, '.env') });
 const { Pool } = require('pg');
 
 if (!process.env.DATABASE_URL) {
@@ -12,6 +12,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 10000,
   max: 5,
+  // Neon requires TLS. The connection string should include sslmode=require.
   ssl: { rejectUnauthorized: false },
 });
 

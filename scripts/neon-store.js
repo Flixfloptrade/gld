@@ -2,8 +2,26 @@
 const { query } = require('../db');
 
 let writeQueue = Promise.resolve();
+let schemaReady;
+
+async function ensureSchema() {
+  if (!schemaReady) {
+    schemaReady = query(`
+      CREATE TABLE IF NOT EXISTS application_state (
+        id SMALLINT PRIMARY KEY CHECK (id = 1),
+        data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `).catch((error) => {
+      schemaReady = null;
+      throw new Error(`Could not prepare Neon application_state table: ${error.message}`);
+    });
+  }
+  await schemaReady;
+}
 
 async function load() {
+  await ensureSchema();
   const result = await query(
     'SELECT data FROM application_state WHERE id = $1',
     [1]
@@ -48,6 +66,7 @@ function save(snapshot) {
   const serialized = JSON.stringify(snapshot);
 
   const write = writeQueue.then(async () => {
+    await ensureSchema();
     const result = await query(
       `INSERT INTO application_state (id, data, updated_at)
        VALUES ($1, $2::jsonb, NOW())
@@ -65,6 +84,7 @@ function save(snapshot) {
 }
 
 async function initialize() {
+  await ensureSchema();
   const state = await load();
   return { created: false, state };
 }
@@ -76,6 +96,7 @@ async function flush() {
 module.exports = {
   load,
   save,
+  ensureSchema,
   initialize,
   flush,
 };

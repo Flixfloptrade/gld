@@ -9,7 +9,9 @@
     "start": "node server.js",
     "admin:setup": "node scripts/setup-admin.js",
     "admin:start": "node admin-server.js",
-    "admin:stack": "node scripts/admin-stack.js"
+    "admin:stack": "node scripts/admin-stack.js",
+    "db:init": "node init-neon-db.js",
+    "db:test": "node test-neon.js"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.1.1",

@@ -9,6 +9,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
+      - key: DATABASE_URL
+        sync: false
       - key: DATA_DIR
         value: ./data
       - key: ADMIN_EMAIL
