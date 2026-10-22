@@ -41,10 +41,8 @@ table{max-width:100%}
   .header>.brand{min-width:0}
   .header nav{grid-column:1/-1;grid-row:2;display:flex;max-width:none;width:calc(100vw - 32px);margin:8px 0 0;padding:8px 0 2px;gap:20px;overflow-x:auto;overscroll-behavior-x:contain;white-space:nowrap;scrollbar-width:thin}
   .head-actions{grid-column:2;grid-row:1;gap:9px;min-width:0}
-  .head-actions .link-button{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;padding:6px 8px;font-size:9px}
-  .account-chip{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;max-width:76px;overflow:hidden;text-overflow:ellipsis}
-  .account-user-chip{display:none}
-  .sign-in-chip{display:inline-flex}
+  .head-actions .link-button{display:none}
+  .account-chip{display:none}
   .cart-button{white-space:nowrap}
   .hero.hero-cinematic{min-height:850px}
   .hero.hero-cinematic .hero-copy{width:100%;min-height:0;padding:54px 24px 0}
@@ -102,10 +100,6 @@ table{max-width:100%}
 }
 
 @media(max-width:480px){
-  .head-actions{gap:4px}
-  .head-actions .link-button,.head-actions .account-chip{padding:5px 6px;font-size:8px}
-  .cart-button{padding:5px 6px;font-size:8px}
-  .language-trigger{min-width:30px;padding:5px}
   body{font-size:13px}
   .route-page{padding:28px 15px 48px}
   .route-page h1{font-size:clamp(30px,9vw,38px);overflow-wrap:anywhere}
@@ -204,6 +198,34 @@ table{max-width:100%}
   .account-stat-grid,.admin-stats{grid-template-columns:minmax(0,1fr)}
   .checkout-progress b{font-size:8px}
   .price-route h2{font-size:23px}
+}
+
+
+/* Mobile-only public and signed-in account dropdown navigation. Desktop navigation is unchanged. */
+.mobile-menu-toggle,.mobile-public-menu,.account-mobile-dropdown,.mobile-hero-cta{display:none}
+.desktop-hero-cta{display:inline-flex}
+@media(max-width:760px){
+  .header nav.header-public-nav{grid-column:1/-1;grid-row:2;display:block;width:100%;max-width:none;margin:8px 0 0;padding:0;overflow:visible;white-space:normal}
+  .header-public-nav>a{display:none}
+  .header-public-nav .mobile-menu-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:42px;padding:10px 13px;border:1px solid #c6a66366;background:#211f1a;color:#f0dfb8;font:inherit;text-align:left;cursor:pointer}
+  .header-public-nav .mobile-menu-toggle span{font-size:18px;line-height:1}
+  .header-public-nav .mobile-public-menu{display:none;list-style:decimal;padding:9px 13px 9px 35px;margin:0;border:1px solid #c6a66366;border-top:0;background:#fffdf8;color:#27251f;box-shadow:0 10px 22px #00000012}
+  .header-public-nav .mobile-public-menu.is-open{display:block}
+  .header-public-nav .mobile-public-menu li{padding:0;margin:0;border-bottom:1px solid #ece5d7}
+  .header-public-nav .mobile-public-menu li:last-child{border-bottom:0}
+  .header-public-nav .mobile-public-menu a{display:block;padding:12px 5px;color:#27251f;text-decoration:none;font-size:13px}
+  .head-actions .account-chip{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:7px 9px;border:1px solid #c6a66366;color:inherit;white-space:nowrap}
+  .desktop-hero-cta{display:none!important}
+  .mobile-hero-cta{display:inline-flex}
+  .account-sidebar>.account-desktop-nav{display:none!important}
+  .account-mobile-dropdown{display:block;margin:12px 0 0}
+  .account-mobile-menu-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:42px;padding:10px 12px;border:1px solid #c6a66366;background:#29271f;color:#f0dfb8;text-align:left;font:inherit;cursor:pointer}
+  .account-mobile-dropdown ol{display:none;list-style:decimal;margin:0;padding:8px 12px 8px 34px;background:#211f1b;border:1px solid #ffffff22;border-top:0}
+  .account-mobile-dropdown ol.is-open{display:block}
+  .account-mobile-dropdown li{padding:0;border-bottom:1px solid #ffffff18}
+  .account-mobile-dropdown li:last-child{border-bottom:0}
+  .account-mobile-dropdown li a{display:block;padding:11px 4px;color:#d4d0c5;text-decoration:none;font-size:12px}
+  .account-mobile-dropdown li a.active{color:#f1d797}
 }
 
 @media(prefers-reduced-motion:reduce){
