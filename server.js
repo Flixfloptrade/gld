@@ -14,15 +14,7 @@ if (fs.existsSync(envFile)) {
     if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^(['"])(.*)\1$/, '$2');
   }
 }
-const DEFAULT_PORT = 3001;
-const configuredPort = String(process.env.PORT ?? '').trim();
-const parsedPort = configuredPort ? Number(configuredPort) : DEFAULT_PORT;
-const PORT = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort < 65536
-  ? parsedPort
-  : DEFAULT_PORT;
-if (configuredPort && PORT !== parsedPort) {
-  console.warn(`Invalid PORT value (${JSON.stringify(configuredPort)}); using ${DEFAULT_PORT}.`);
-}
+const PORT = Number(process.env.PORT || 3001);
 const MINIMUM_PURCHASE_CENTS = 200_000;
 const MINIMUM_SELL_CENTS = 1_000_000;
 const products = [
@@ -114,8 +106,8 @@ const money = cents => (cents / 100).toFixed(2);
 const CRYPTO_WINDOW_MS = 5 * 60_000;
 const BTC_CONFIRMATIONS_REQUIRED = 3;
 const EVM_CONFIRMATIONS_REQUIRED = 12;
-const TRON_RECEIVE_ADDRESS = 'TKT5JSenfCMAAeu9ezhvqeAGievbWBfHqG';
-const EVM_RECEIVE_ADDRESS = '0x07e1837af933c566bd1f5d228b47b4cbced4cd57';
+const TRON_RECEIVE_ADDRESS = 'TTYH8oJoKrzrg2dAAVnUi1mYm4baPEK8PM';
+const EVM_RECEIVE_ADDRESS = '0xbc3fe9d192350492b3882097b05349937d378e16';
 const TOKEN_CONFIG = {
   'USDT:ETHEREUM': { chain: 'ETHEREUM', chainId: 1, contract: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6, symbol: 'USDT', networkName: 'Ethereum (ERC-20)' },
   'USDC:ETHEREUM': { chain: 'ETHEREUM', chainId: 1, contract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, symbol: 'USDC', networkName: 'Ethereum (ERC-20)' },
@@ -542,7 +534,7 @@ const server = http.createServer(async (req, res) => {
       const isBitcoin = asset === 'BTC' && network === 'BITCOIN';
       const token = selectedToken(asset, network);
       if (!isBitcoin && !token) return send(res, 400, { error: 'That coin and network combination is not supported. USDC is enabled only on Ethereum; USDT is enabled on Ethereum, BNB Smart Chain, and TRON.' });
-      const receiveAddress = isBitcoin ? String(process.env.CRYPTO_BTC_RECEIVE_ADDRESS || '15RsgmaFM74gDTpXtx1GvtJvCgGWsp2f76').trim() : network === 'TRON' ? String(process.env.CRYPTO_TRON_RECEIVE_ADDRESS || TRON_RECEIVE_ADDRESS).trim() : String(process.env.CRYPTO_EVM_RECEIVE_ADDRESS || EVM_RECEIVE_ADDRESS).trim();
+      const receiveAddress = isBitcoin ? String(process.env.CRYPTO_BTC_RECEIVE_ADDRESS || '').trim() : network === 'TRON' ? String(process.env.CRYPTO_TRON_RECEIVE_ADDRESS || TRON_RECEIVE_ADDRESS).trim() : String(process.env.CRYPTO_EVM_RECEIVE_ADDRESS || EVM_RECEIVE_ADDRESS).trim();
       if (isBitcoin && !validBitcoinAddress(receiveAddress)) return send(res, 503, { error: 'Bitcoin payments need a valid server-configured receiving address.' });
       if (token?.chain === 'TRON' && !decodeTronAddress(receiveAddress)) return send(res, 503, { error: 'The configured TRON receiving address is invalid.' });
       if (token?.chain !== 'TRON' && token && !/^0x[a-f0-9]{40}$/i.test(receiveAddress)) return send(res, 503, { error: 'The configured EVM receiving address is invalid.' });
