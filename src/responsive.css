@@ -204,3 +204,20 @@ table{max-width:100%}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+/* Keep the sign-in/account action visible in the top row on mobile. */
+@media(max-width:760px){
+  .head-actions{display:flex;align-items:center;flex-wrap:nowrap;gap:7px}
+  .head-actions .account-chip{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:34px;padding:7px 10px;border:1px solid #b89a62;border-radius:2px;background:#c7a66a;color:#171714;font-size:10px;font-weight:700;line-height:1.2;white-space:nowrap;text-decoration:none}
+  .head-actions .cart-button{flex:0 0 auto}
+  .head-actions .language-trigger{flex:0 0 auto}
+}
+@media(max-width:360px){
+  .header{padding-left:8px;padding-right:8px;column-gap:6px}
+  .brand{gap:6px;font-size:9px;letter-spacing:.07em}
+  .brand-mark{width:25px;height:25px;font-size:18px}
+  .head-actions{gap:4px}
+  .head-actions .account-chip{padding:6px 7px;font-size:9px}
+  .head-actions .cart-button{padding:6px 6px}
+  .head-actions .language-trigger{min-width:30px;padding:5px}
+}
