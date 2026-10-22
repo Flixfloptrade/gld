@@ -507,7 +507,9 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req);
       const country = String(input.country || '').trim();
       const custodyPreference = String(input.custodyPreference || 'delivery');
+      const vaultDurationMonths = custodyPreference === 'vault' ? Number(input.vaultDurationMonths || 1) : null;
       if (country.length < 2 || country.length > 80 || !['vault', 'delivery'].includes(custodyPreference)) return send(res, 400, { error: 'Choose a valid country and custody option to estimate fees.' });
+      if (custodyPreference === 'vault' && (!Number.isInteger(vaultDurationMonths) || vaultDurationMonths < 1 || vaultDurationMonths > 12)) return send(res, 400, { error: 'Choose a vault duration from 1 to 12 months.' });
       if (!Array.isArray(input.items) || !input.items.length || input.items.length > 20) return send(res, 400, { error: 'Add between 1 and 20 product lines.' });
       const lines = [];
       for (const item of input.items) {
@@ -516,7 +518,7 @@ const server = http.createServer(async (req, res) => {
         if (!p || !Number.isInteger(qty) || qty < 1 || qty > 20) return send(res, 400, { error: 'A product or quantity is invalid.' });
         if (qty > p.stock) return send(res, 409, { error: `${p.name} has only ${p.stock} available.` });
         const current = pricing(p);
-        lines.push({ productId: p.id, name: p.name, metal: p.metal, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
+        lines.push({ productId: p.id, name: p.name, metal: p.metal, weightOz: p.weightOz, purity: p.purity, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
       if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.', minimumPurchaseCents: MINIMUM_PURCHASE_CENTS, subtotalCents });
@@ -529,8 +531,8 @@ const server = http.createServer(async (req, res) => {
       const taxCents = Math.round(subtotalCents * taxRate);
       const totalCents = subtotalCents + serviceFeeCents + taxCents;
       const quoteId = crypto.randomUUID();
-      quotes.set(quoteId, { type: 'purchase', expiresAt: Date.now() + CRYPTO_WINDOW_MS, lines, subtotalCents, country, custodyPreference, serviceFeeCents, taxCents, taxRate, totalCents });
-      return send(res, 200, { quoteId, currency: 'USD', expiresInSeconds: CRYPTO_WINDOW_MS / 1000, source: priceSource, lines, country, custodyPreference, subtotalCents, serviceFeeCents, serviceFeeLabel: custodyPreference === 'vault' ? 'Estimated vault service fee' : 'Estimated delivery fee', taxCents, taxRatePct: taxRate * 100, totalCents, note: 'Tax uses a configurable general estimate, not a jurisdictional tax determination. Final fees and taxes must be confirmed before production checkout.' });
+      quotes.set(quoteId, { type: 'purchase', expiresAt: Date.now() + CRYPTO_WINDOW_MS, lines, subtotalCents, country, custodyPreference, vaultDurationMonths, serviceFeeCents, taxCents, taxRate, totalCents });
+      return send(res, 200, { quoteId, currency: 'USD', expiresInSeconds: CRYPTO_WINDOW_MS / 1000, source: priceSource, lines, country, custodyPreference, vaultDurationMonths, subtotalCents, serviceFeeCents, serviceFeeLabel: custodyPreference === 'vault' ? 'Estimated vault service fee' : 'Estimated delivery fee', taxCents, taxRatePct: taxRate * 100, totalCents, note: 'Tax uses a configurable general estimate, not a jurisdictional tax determination. Final fees and taxes must be confirmed before production checkout.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/crypto/payments') {
       if (process.env.CRYPTO_PAYMENTS_ENABLED !== 'true') return send(res, 503, { error: 'Crypto checkout is off. Set CRYPTO_PAYMENTS_ENABLED=true in the server .env file and restart the server. Chain API keys are optional when an admin will manually review transactions.' });
@@ -566,7 +568,7 @@ const server = http.createServer(async (req, res) => {
       const amountToken = isBitcoin ? (amountSatoshis / 100_000_000).toFixed(8) : formatTokenUnits(amountUnits, token.decimals);
       for (const line of quote.lines) products.find(item => item.id === line.productId).stock -= line.quantity;
       const now = Date.now(); const payment = { quoteId, asset, network, address: receiveAddress, tokenContract: token?.contract || null, decimals: token?.decimals || null, chainId: token?.chainId || null, amountUnits, amountToken, rateUsd, amountSatoshis, amountBTC: isBitcoin ? amountToken : null, expiresAt: new Date(now + CRYPTO_WINDOW_MS).toISOString(), status: 'awaiting_payment', inventoryReserved: true, txId: null };
-      const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_crypto_payment', paymentMethod: 'crypto', paymentStatus: 'awaiting_crypto', fulfillmentStatus: 'unfulfilled', custodyPreference: quote.custodyPreference, createdAt: new Date(now).toISOString(), customer: { name: user.name, email: user.email, address: user.address, city: user.city, region: user.region, country: user.country, postalCode: user.postalCode }, lines: quote.lines, subtotalCents: quote.subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents: quote.totalCents, currency: 'USD', cryptoPayment: payment };
+      const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_crypto_payment', paymentMethod: 'crypto', paymentStatus: 'awaiting_crypto', fulfillmentStatus: 'unfulfilled', custodyPreference: quote.custodyPreference, vaultDurationMonths: quote.vaultDurationMonths || null, createdAt: new Date(now).toISOString(), customer: { name: user.name, email: user.email, address: user.address, city: user.city, region: user.region, country: user.country, postalCode: user.postalCode }, lines: quote.lines, subtotalCents: quote.subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents: quote.totalCents, currency: 'USD', cryptoPayment: payment };
       state.orders.push(order);
       await log('crypto_payment_intent_created', { orderId: order.id, asset, network, expiresAt: payment.expiresAt, totalCents: order.totalCents });
       return send(res, 201, { orderId: order.id, payment: { asset, network, address: receiveAddress, amount: amountToken, currency: asset, rateUsd, expiresAt: payment.expiresAt, status: payment.status }, message: `${asset} payment request created. Send the exact amount on ${token?.networkName || 'Bitcoin'} before the timer expires, then submit the transaction ID for server verification.` });
@@ -659,14 +661,14 @@ const server = http.createServer(async (req, res) => {
       for (const item of quoteItems) {
         const p = products.find(x => x.id === item.productId); const qty = Number(item.quantity);
         if (!p || !Number.isInteger(qty) || qty < 1 || qty > 20 || qty > p.stock) return send(res, 409, { error: 'Cart changed. Please review your cart and request a new quote.' });
-        const current = pricing(p); lines.push({ productId: p.id, name: p.name, metal: p.metal, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
+        const current = pricing(p); lines.push({ productId: p.id, name: p.name, metal: p.metal, weightOz: p.weightOz, purity: p.purity, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
       if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.' });
       if (JSON.stringify(lines) !== JSON.stringify(quote.lines) || subtotalCents !== quote.subtotalCents) return send(res, 409, { error: 'The bullion price or cart changed during checkout. Request and accept a fresh quote before placing this order.', priceChanged: true, currentLines: lines, currentSubtotalCents: subtotalCents });
       const totalCents = quote.totalCents;
       quotes.delete(input.quoteId);
-      const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_payment_setup', paymentStatus: 'not_collected_preview', fulfillmentStatus: 'unfulfilled', custodyPreference, createdAt: new Date().toISOString(), customer: { name, email, address, city, region, country, postalCode }, lines, subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents, currency: 'USD' };
+      const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'awaiting_payment_setup', paymentStatus: 'not_collected_preview', fulfillmentStatus: 'unfulfilled', custodyPreference, vaultDurationMonths: quote.vaultDurationMonths || null, createdAt: new Date().toISOString(), customer: { name, email, address, city, region, country, postalCode }, lines, subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents, currency: 'USD' };
       state.orders.push(order); await log('order_created_preview', { id: order.id, totalCents });
       return send(res, 201, { order: { id: order.id, status: order.status, paymentStatus: order.paymentStatus, fulfillmentStatus: order.fulfillmentStatus, custodyPreference, total: money(totalCents), currency: 'USD' }, message: custodyPreference === 'vault' ? 'Preview vault preference recorded. No bullion was allocated or stored and no payment was collected.' : 'Preview delivery preference recorded. No payment was collected and no shipment was created.' });
     }
@@ -741,9 +743,20 @@ const server = http.createServer(async (req, res) => {
       const reviewer = adminSessions.get(adminTokenFromRequest(req))?.email || 'admin';
       if (decision === 'approve') {
         order.paymentStatus = 'paid'; order.status = 'paid'; payment.status = 'approved_by_admin'; payment.adminApprovedAt = new Date().toISOString(); payment.adminReviewer = reviewer;
+        if (order.custodyPreference === 'vault') {
+          const months = Number.isInteger(order.vaultDurationMonths) && order.vaultDurationMonths >= 1 && order.vaultDurationMonths <= 12 ? order.vaultDurationMonths : 1;
+          const approvedAt = new Date(payment.adminApprovedAt);
+          const unlockAt = new Date(approvedAt);
+          const day = unlockAt.getDate();
+          unlockAt.setDate(1); unlockAt.setMonth(unlockAt.getMonth() + months);
+          const lastDay = new Date(unlockAt.getFullYear(), unlockAt.getMonth() + 1, 0).getDate();
+          unlockAt.setDate(Math.min(day, lastDay));
+          order.vaultDurationMonths = months;
+          order.vault = { status: 'locked', paymentTag: 'VAULT PAYMENT', amountCents: order.subtotalCents || order.totalCents, durationMonths: months, approvedAt: approvedAt.toISOString(), unlockAt: unlockAt.toISOString(), lines: (order.lines || []).map(line => ({ productId: line.productId, name: line.name, metal: line.metal, weightOz: line.weightOz || null, purity: line.purity || 'Not recorded', quantity: line.quantity })) };
+        }
         if (payment.quoteId) quotes.delete(payment.quoteId);
-        await log('crypto_payment_admin_approved', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email });
-        return send(res, 200, { order, message: 'On-chain transaction approved. The order is now paid and recorded on the customer account.' });
+        await log('crypto_payment_admin_approved', { orderId: order.id, txId: payment.txId, reviewer, customerEmail: order.customer?.email, paymentTag: order.custodyPreference === 'vault' ? 'VAULT PAYMENT' : 'BULLION PAYMENT', vaultUnlockAt: order.vault?.unlockAt || null });
+        return send(res, 200, { order, message: order.custodyPreference === 'vault' ? `Payment approved and credited. Vault holding locked for ${order.vaultDurationMonths} month(s), unlocking ${order.vault.unlockAt}.` : 'On-chain transaction approved. The order is now paid and recorded on the customer account.' });
       }
       if (payment.inventoryReserved) { for (const line of order.lines || []) { const product = products.find(item => item.id === line.productId); if (product) product.stock += line.quantity; } payment.inventoryReserved = false; }
       order.paymentStatus = 'payment_rejected'; order.status = 'payment_rejected'; payment.status = 'rejected_by_admin'; payment.adminRejectedAt = new Date().toISOString(); payment.adminReviewer = reviewer;
