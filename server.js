@@ -14,7 +14,15 @@ if (fs.existsSync(envFile)) {
     if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^(['"])(.*)\1$/, '$2');
   }
 }
-const PORT = Number(process.env.PORT || 3001);
+const DEFAULT_PORT = 3001;
+const configuredPort = String(process.env.PORT ?? '').trim();
+const parsedPort = configuredPort ? Number(configuredPort) : DEFAULT_PORT;
+const PORT = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort < 65536
+  ? parsedPort
+  : DEFAULT_PORT;
+if (configuredPort && PORT !== parsedPort) {
+  console.warn(`Invalid PORT value (${JSON.stringify(configuredPort)}); using ${DEFAULT_PORT}.`);
+}
 const MINIMUM_PURCHASE_CENTS = 200_000;
 const MINIMUM_SELL_CENTS = 1_000_000;
 const products = [
