@@ -15,7 +15,8 @@ if (fs.existsSync(envFile)) {
   }
 }
 const PORT = Number(process.env.PORT || 3001);
-const MINIMUM_CENTS = 1_000_000;
+const MINIMUM_PURCHASE_CENTS = 200_000;
+const MINIMUM_SELL_CENTS = 1_000_000;
 const products = [
   { id: 'au-1oz-eagle', slug: 'american-gold-eagle-1oz', name: 'American Gold Eagle', metal: 'gold', weightOz: 1, purity: '22 karat · 91.67%', type: 'Coin', premiumPct: 0.055, stock: 14, image: 'gold-coin', badge: 'Bestseller' },
   { id: 'au-1oz-bar', slug: 'gold-bar-1oz', name: '1 oz Gold Bar', metal: 'gold', weightOz: 1, purity: '24 karat · 99.99%', type: 'Bar', premiumPct: 0.035, stock: 22, image: 'gold-bar', badge: 'Low premium' },
@@ -105,8 +106,8 @@ const money = cents => (cents / 100).toFixed(2);
 const CRYPTO_WINDOW_MS = 5 * 60_000;
 const BTC_CONFIRMATIONS_REQUIRED = 3;
 const EVM_CONFIRMATIONS_REQUIRED = 12;
-const TRON_RECEIVE_ADDRESS = 'TTYH8oJoKrzrg2dAAVnUi1mYm4baPEK8PM';
-const EVM_RECEIVE_ADDRESS = '0xbc3fe9d192350492b3882097b05349937d378e16';
+const TRON_RECEIVE_ADDRESS = 'TKT5JSenfCMAAeu9ezhvqeAGievbWBfHqG';
+const EVM_RECEIVE_ADDRESS = '0x07e1837af933c566bd1f5d228b47b4cbced4cd57';
 const TOKEN_CONFIG = {
   'USDT:ETHEREUM': { chain: 'ETHEREUM', chainId: 1, contract: '0xdac17f958d2ee523a2206206994597c13d831ec7', decimals: 6, symbol: 'USDT', networkName: 'Ethereum (ERC-20)' },
   'USDC:ETHEREUM': { chain: 'ETHEREUM', chainId: 1, contract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6, symbol: 'USDC', networkName: 'Ethereum (ERC-20)' },
@@ -492,7 +493,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { orderId: order.id, paymentStatus: order.paymentStatus, paid: order.paymentStatus === 'paid' });
     }
     if (req.method === 'GET' && url.pathname === '/api/prices') { await refreshSpotPrices(); return send(res, 200, { source: priceSource, asOf: priceAsOf, disclaimer: 'Spot reference only. Product premiums, final quotes, fees, tax and availability may differ.', metals: { gold: { perOz: spot.gold, perGram: spot.gold / 31.1034768, currency: 'USD' }, silver: { perOz: spot.silver, perGram: spot.silver / 31.1034768, currency: 'USD' } } }); }
-    if (req.method === 'GET' && url.pathname === '/api/products') { await refreshSpotPrices(); return send(res, 200, { products: products.map(pricing), minimumPurchaseCents: MINIMUM_CENTS, priceSource }); }
+    if (req.method === 'GET' && url.pathname === '/api/products') { await refreshSpotPrices(); return send(res, 200, { products: products.map(pricing), minimumPurchaseCents: MINIMUM_PURCHASE_CENTS, priceSource }); }
     if (req.method === 'POST' && url.pathname === '/api/quote') {
       await refreshSpotPrices(true);
       const input = await body(req);
@@ -510,7 +511,7 @@ const server = http.createServer(async (req, res) => {
         lines.push({ productId: p.id, name: p.name, metal: p.metal, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
-      if (subtotalCents < MINIMUM_CENTS) return send(res, 422, { error: 'Minimum purchase is $10,000.00 USD per order.', minimumPurchaseCents: MINIMUM_CENTS, subtotalCents });
+      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.', minimumPurchaseCents: MINIMUM_PURCHASE_CENTS, subtotalCents });
       const configuredTaxRate = Number(process.env.CHECKOUT_ESTIMATED_TAX_RATE ?? 0.08);
       const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 && configuredTaxRate <= 1 ? configuredTaxRate : 0.08;
       const configuredDeliveryCents = Number(process.env.CHECKOUT_DELIVERY_FEE_CENTS ?? 2500);
@@ -533,7 +534,7 @@ const server = http.createServer(async (req, res) => {
       const isBitcoin = asset === 'BTC' && network === 'BITCOIN';
       const token = selectedToken(asset, network);
       if (!isBitcoin && !token) return send(res, 400, { error: 'That coin and network combination is not supported. USDC is enabled only on Ethereum; USDT is enabled on Ethereum, BNB Smart Chain, and TRON.' });
-      const receiveAddress = isBitcoin ? String(process.env.CRYPTO_BTC_RECEIVE_ADDRESS || '').trim() : network === 'TRON' ? String(process.env.CRYPTO_TRON_RECEIVE_ADDRESS || TRON_RECEIVE_ADDRESS).trim() : String(process.env.CRYPTO_EVM_RECEIVE_ADDRESS || EVM_RECEIVE_ADDRESS).trim();
+      const receiveAddress = isBitcoin ? String(process.env.CRYPTO_BTC_RECEIVE_ADDRESS || '15RsgmaFM74gDTpXtx1GvtJvCgGWsp2f76').trim() : network === 'TRON' ? String(process.env.CRYPTO_TRON_RECEIVE_ADDRESS || TRON_RECEIVE_ADDRESS).trim() : String(process.env.CRYPTO_EVM_RECEIVE_ADDRESS || EVM_RECEIVE_ADDRESS).trim();
       if (isBitcoin && !validBitcoinAddress(receiveAddress)) return send(res, 503, { error: 'Bitcoin payments need a valid server-configured receiving address.' });
       if (token?.chain === 'TRON' && !decodeTronAddress(receiveAddress)) return send(res, 503, { error: 'The configured TRON receiving address is invalid.' });
       if (token?.chain !== 'TRON' && token && !/^0x[a-f0-9]{40}$/i.test(receiveAddress)) return send(res, 503, { error: 'The configured EVM receiving address is invalid.' });
@@ -544,7 +545,7 @@ const server = http.createServer(async (req, res) => {
       if (!quote || quote.type !== 'purchase' || quote.expiresAt <= Date.now()) return send(res, 409, { error: 'The checkout quote has expired. Refresh and accept a current price before starting payment.' });
       if (!Array.isArray(input.items) || JSON.stringify(input.items) !== JSON.stringify(quote.lines.map(line => ({ productId: line.productId, quantity: line.quantity })))) return send(res, 409, { error: 'The cart changed. Review it and request a fresh checkout quote.' });
       if (quote.country.toLowerCase() !== String(user.country || '').toLowerCase() || quote.custodyPreference !== String(input.custodyPreference || '')) return send(res, 409, { error: 'The saved country or custody choice does not match this quote. Return to checkout and refresh the quote.' });
-      if (quote.subtotalCents < MINIMUM_CENTS) return send(res, 422, { error: 'Minimum purchase is $10,000.00 USD per order.' });
+      if (quote.subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.' });
       for (const line of quote.lines) { const product = products.find(item => item.id === line.productId); if (!product || product.stock < line.quantity) return send(res, 409, { error: `${line.name} is no longer available in the requested quantity.` }); }
       let rateUsd = null; let amountSatoshis = null; let amountUnits = null;
       if (isBitcoin) {
@@ -653,7 +654,7 @@ const server = http.createServer(async (req, res) => {
         const current = pricing(p); lines.push({ productId: p.id, name: p.name, metal: p.metal, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
-      if (subtotalCents < MINIMUM_CENTS) return send(res, 422, { error: 'Minimum purchase is $10,000.00 USD per order.' });
+      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.' });
       if (JSON.stringify(lines) !== JSON.stringify(quote.lines) || subtotalCents !== quote.subtotalCents) return send(res, 409, { error: 'The bullion price or cart changed during checkout. Request and accept a fresh quote before placing this order.', priceChanged: true, currentLines: lines, currentSubtotalCents: subtotalCents });
       const totalCents = quote.totalCents;
       quotes.delete(input.quoteId);
@@ -666,7 +667,7 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req); const metal = String(input.metal || '').toLowerCase(); const weightOz = Number(input.weightOz);
       if (!['gold', 'silver'].includes(metal) || !Number.isFinite(weightOz) || weightOz <= 0 || weightOz > 10_000) return send(res, 400, { error: 'Choose gold or silver and enter a valid weight in troy ounces.' });
       const spotValueCents = Math.round(spot[metal] * weightOz * 100); const buybackCents = Math.round(spotValueCents * 0.95);
-      if (buybackCents < MINIMUM_CENTS) return send(res, 422, { error: `Minimum sell request is $10,000.00 USD in ${metal} after the illustrative buyback adjustment.`, minimumCents: MINIMUM_CENTS, estimatedValueCents: buybackCents });
+      if (buybackCents < MINIMUM_SELL_CENTS) return send(res, 422, { error: `Minimum sell request is $10,000.00 USD in ${metal} after the illustrative buyback adjustment.`, minimumCents: MINIMUM_SELL_CENTS, estimatedValueCents: buybackCents });
       const quoteId = crypto.randomUUID(); const sellQuote = { type: 'sell', metal, weightOz, spotValueCents, buybackCents, expiresAt: Date.now() + 120_000 };
       quotes.set(quoteId, sellQuote);
       return send(res, 200, { quoteId, metal, weightOz, currency: 'USD', source: priceSource, discountPct: 5, spotValueCents, estimatedPayoutCents: buybackCents, expiresInSeconds: 120, note: 'Illustrative buyback estimate only. Metal inspection, shipping and a production dealer offer are not included.' });
