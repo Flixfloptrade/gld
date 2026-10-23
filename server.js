@@ -781,7 +781,7 @@ const server = http.createServer(async (req, res) => {
       if (orderMatch) {
         const order = state.orders.find(o => o.id === decodeURIComponent(orderMatch[1]));
         if (!order) return send(res, 404, { error: 'Order not found.' });
-        const allowed = ['unfulfilled', 'processing', 'shipped', 'delivered'];
+        const allowed = ['failed', 'unfulfilled', 'processing', 'shipped', 'delivered'];
         if (!allowed.includes(input.fulfillmentStatus)) return send(res, 400, { error: 'Choose a valid fulfillment status.' });
         if (['shipped', 'delivered'].includes(input.fulfillmentStatus) && order.paymentStatus !== 'paid') return send(res, 409, { error: 'Shipping is blocked until a verified payment integration records settlement.' });
         order.fulfillmentStatus = input.fulfillmentStatus;
