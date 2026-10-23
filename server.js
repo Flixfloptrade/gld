@@ -209,18 +209,52 @@ async function getBitcoinUsdSellRate() {
   if (!Number.isFinite(rate) || rate <= 0) throw new Error('Blockchain.com returned an invalid BTC/USD rate.');
   return rate;
 }
-let usdNgnRateCache = { rate: null, source: null, expiresAt: 0 };
-async function getUsdNgnRate() {
-  const configured = Number(process.env.USD_NGN_RATE);
-  if (Number.isFinite(configured) && configured > 0) return { rate: configured, source: 'Configured USD_NGN_RATE' };
-  if (usdNgnRateCache.rate && usdNgnRateCache.expiresAt > Date.now()) return usdNgnRateCache;
-  const response = await fetch('https://open.er-api.com/v6/latest/USD', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
-  if (!response.ok) throw new Error('The NGN/USD exchange-rate service is unavailable. Set USD_NGN_RATE to a verified rate and try again.');
-  const data = await response.json();
-  const rate = Number(data?.rates?.NGN);
-  if (data?.result !== 'success' || !Number.isFinite(rate) || rate <= 0) throw new Error('The exchange-rate service returned an invalid NGN rate. Set USD_NGN_RATE to a verified rate and try again.');
-  usdNgnRateCache = { rate, source: 'Live reference rate', expiresAt: Date.now() + 15 * 60_000 };
-  return usdNgnRateCache;
+
+const COUNTRY_CURRENCY_GROUPS = {
+  USD: ['United States Minor Outlying Islands','British Indian Ocean Territory','United States','United States of America','USA','US','Ecuador','El Salvador','Panama','Timor-Leste','Marshall Islands','Micronesia','Palau','British Virgin Islands','Turks and Caicos Islands','Bonaire','Puerto Rico','Guam','American Samoa','Northern Mariana Islands','United States Virgin Islands','US Virgin Islands','Federated States of Micronesia','Micronesia, Federated States of','Virgin Islands, U.S.','Virgin Islands, British'],
+  NGN: ['Nigeria','NG'],
+  GBP: ['Saint Helena, Ascension and Tristan da Cunha','South Georgia and the South Sandwich Islands','Guernsey','Isle of Man','Jersey','United Kingdom','UK','Great Britain','England','Scotland','Wales','Northern Ireland','GB'],
+  EUR: ['Åland Islands','Aland Islands','Saint Barthélemy','Saint Barthelemy','Saint Martin (French part)','Saint Pierre and Miquelon','French Southern Territories','Macao','Germany','France','Italy','Spain','Portugal','Netherlands','Belgium','Austria','Ireland','Finland','Greece','Luxembourg','Malta','Cyprus','Estonia','Latvia','Lithuania','Slovakia','Slovenia','Croatia','Andorra','Monaco','San Marino','Vatican City','Holy See (Vatican City State)','Montenegro','Kosovo','French Guiana','Guadeloupe','Martinique','Mayotte','Réunion','Reunion','Saint Martin'],
+  CAD: ['Canada','CA'], AUD: ['Australia','AU','Heard Island and McDonald Islands','Christmas Island','Cocos (Keeling) Islands','Cocos Islands','Norfolk Island','Kiribati','Nauru','Tuvalu'],
+  NZD: ['New Zealand','NZ','Cook Islands','Niue','Pitcairn Islands','Pitcairn','Tokelau'],
+  INR: ['India','IN'], SAR: ['Saudi Arabia','SA'], AED: ['United Arab Emirates','UAE','AE'], SGD: ['Singapore','SG'],
+  JPY: ['Japan','JP'], CNY: ['China','CN'], HKD: ['Hong Kong','HK'], TWD: ['Taiwan','TW'], KRW: ['South Korea','Korea, Republic of','KR'], KPW: ['North Korea'],
+  CHF: ['Switzerland','CH','Liechtenstein'], SEK: ['Sweden','SE'], NOK: ['Norway','NO','Svalbard and Jan Mayen','Bouvet Island'], DKK: ['Denmark','DK','Greenland','Faroe Islands'], ISK: ['Iceland','IS'],
+  BRL: ['Brazil','BR'], MXN: ['Mexico','MX'], ARS: ['Argentina','AR'], CLP: ['Chile','CL'], COP: ['Colombia','CO'], PEN: ['Peru','PE'], UYU: ['Uruguay','UY'], PYG: ['Paraguay','PY'], BOB: ['Bolivia','BO'], VES: ['Venezuela','VE'],
+  ZAR: ['South Africa','ZA'], KES: ['Kenya','KE'], GHS: ['Ghana','GH'], EGP: ['Egypt','EG'], MAD: ['Morocco','MA','Western Sahara'], TND: ['Tunisia','TN'], DZD: ['Algeria','DZ'], ETB: ['Ethiopia','ET'], UGX: ['Uganda','UG'], TZS: ['Tanzania','TZ'], RWF: ['Rwanda','RW'], XOF: ['Senegal','SN','Ivory Coast','Côte d’Ivoire','Cote d Ivoire','Burkina Faso','Mali','Niger','Togo','Benin','Guinea-Bissau'], XAF: ['Cameroon','CM','Central African Republic','Chad','Republic of the Congo','Congo','Gabon','Equatorial Guinea'], BWP: ['Botswana','BW'], ZMW: ['Zambia','ZM'], MWK: ['Malawi','MW'], ZWL: ['Zimbabwe','ZW'], NAD: ['Namibia','NA'], AOA: ['Angola','AO'], MZN: ['Mozambique','MZ'], MGA: ['Madagascar','MG'], MUR: ['Mauritius','MU'], SCR: ['Seychelles','SC'], SDG: ['Sudan','SD'], SSP: ['South Sudan','SS'], SOS: ['Somalia','SO'], GMD: ['Gambia','GM'], GNF: ['Guinea','GN'], SLL: ['Sierra Leone','SL'], LRD: ['Liberia','LR'], CDF: ['Democratic Republic of the Congo','Congo, The Democratic Republic of the','DR Congo','CD'], BIF: ['Burundi','BI'], LSL: ['Lesotho','LS'], CVE: ['Cape Verde','Cabo Verde','CV'], KMF: ['Comoros','KM'], STN: ['Sao Tome and Principe','São Tomé and Príncipe','ST'], ERN: ['Eritrea','ER'], DJF: ['Djibouti','DJ'], MRU: ['Mauritania','MR'], LYD: ['Libya','LY'], SZL: ['Eswatini','Swaziland','SZ'],
+  PKR: ['Pakistan','PK'], BDT: ['Bangladesh','BD'], LKR: ['Sri Lanka','LK'], NPR: ['Nepal','NP'], BTN: ['Bhutan','BT'], AFN: ['Afghanistan','AF'], IRR: ['Iran','IR'], IQD: ['Iraq','IQ'], ILS: ['Israel','IL','Palestine','Palestine, State of','Palestinian Territories'], LBP: ['Lebanon','LB'], SYP: ['Syria','Syrian Arab Republic','SY'], JOD: ['Jordan','JO'], KWD: ['Kuwait','KW'], BHD: ['Bahrain','BH'], QAR: ['Qatar','QA'], OMR: ['Oman','OM'], YER: ['Yemen','YE'], TRY: ['Turkey','Türkiye','TR'], AZN: ['Azerbaijan','AZ'], GEL: ['Georgia','GE'], AMD: ['Armenia','AM'], ALL: ['Albania','AL'], RSD: ['Serbia','RS'], BAM: ['Bosnia and Herzegovina','BA'], MKD: ['North Macedonia','Macedonia','MK'], MDL: ['Moldova','MD'], UAH: ['Ukraine','UA'], RUB: ['Russia','Russian Federation','RU'], BYN: ['Belarus','BY'], PLN: ['Poland','PL'], CZK: ['Czechia','Czech Republic','CZ'], HUF: ['Hungary','HU'], RON: ['Romania','RO'], BGN: ['Bulgaria','BG'], KZT: ['Kazakhstan','KZ'], UZS: ['Uzbekistan','UZ'], KGS: ['Kyrgyzstan','KG'], TJS: ['Tajikistan','TJ'], TMT: ['Turkmenistan','TM'], MNT: ['Mongolia','MN'],
+  THB: ['Thailand','TH'], VND: ['Vietnam','Viet Nam','VN'], IDR: ['Indonesia','ID'], MYR: ['Malaysia','MY'], PHP: ['Philippines','PH'], PKR: ['Pakistan','PK'], MMK: ['Myanmar','Burma','MM'], KHR: ['Cambodia','KH'], LAK: ['Laos','Lao PDR','LA'], BND: ['Brunei','Brunei Darussalam','BN'], FJD: ['Fiji','FJ'], PGK: ['Papua New Guinea','PG'], SBD: ['Solomon Islands','SB'], TOP: ['Tonga','TO'], VUV: ['Vanuatu','VU'], WST: ['Samoa','WS'],
+  CRC: ['Costa Rica','CR'], GTQ: ['Guatemala','GT'], HNL: ['Honduras','HN'], NIO: ['Nicaragua','NI'], DOP: ['Dominican Republic','DO'], JMD: ['Jamaica','JM'], TTD: ['Trinidad and Tobago','TT'], BBD: ['Barbados','BB'], BSD: ['Bahamas','BS'], BZD: ['Belize','BZ'], XCD: ['Antigua and Barbuda','Dominica','Grenada','Saint Kitts and Nevis','Saint Lucia','Saint Vincent and the Grenadines','Anguilla','Montserrat'],
+  XPF: ['French Polynesia','New Caledonia','Wallis and Futuna'],
+  BMD: ['Bermuda','BM'], KYD: ['Cayman Islands','KY'], AWG: ['Aruba','AW'], ANG: ['Curaçao','Curacao','Sint Maarten','Sint Maarten (Dutch part)','Bonaire, Sint Eustatius and Saba'], SRD: ['Suriname','SR'], GYD: ['Guyana','GY'], HTG: ['Haiti','HT'], CUP: ['Cuba','CU'], MVR: ['Maldives','MV'], OMR: ['Oman','OM'], FKP: ['Falkland Islands','Falkland Islands (Malvinas)','FK'], IMP: ['Isle of Man'], JEP: ['Jersey'], GIP: ['Gibraltar','GI'], SHP: ['Saint Helena'], BND: ['Brunei','Brunei Darussalam','BN']
+};
+const COUNTRY_CURRENCY = new Map();
+for (const [currency, countries] of Object.entries(COUNTRY_CURRENCY_GROUPS)) for (const country of countries) COUNTRY_CURRENCY.set(country.normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, ''), currency);
+function localCurrencyForCountry(country) {
+  const key = String(country || '').normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return COUNTRY_CURRENCY.get(key) || (key ? null : 'USD');
+}
+
+let usdRatesCache = { rates: null, source: null, expiresAt: 0 };
+async function getUsdLocalRate(currency) {
+  if (currency === 'NGN') {
+    const configured = Number(process.env.USD_NGN_RATE);
+    if (Number.isFinite(configured) && configured > 0) return { rate: configured, source: 'Configured USD_NGN_RATE' };
+  }
+  if (!usdRatesCache.rates || usdRatesCache.expiresAt <= Date.now()) {
+    const response = await fetch('https://open.er-api.com/v6/latest/USD', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) throw new Error('The live currency-rate service is unavailable. Try again later.');
+    const data = await response.json();
+    if (data?.result !== 'success' || !data?.rates || typeof data.rates !== 'object') throw new Error('The currency-rate service returned invalid data.');
+    usdRatesCache = { rates: data.rates, source: 'Live reference rate', expiresAt: Date.now() + 15 * 60_000 };
+  }
+  const rate = Number(usdRatesCache.rates[currency]);
+  if (!Number.isFinite(rate) || rate <= 0) throw new Error(`A live USD/${currency} exchange rate is unavailable.`);
+  return { rate, source: usdRatesCache.source };
+}
+function currencyName(currency) {
+  if (!currency) return 'Local currency not mapped';
+  try { return new Intl.DisplayNames(['en'], { type: 'currency' }).of(currency) || currency; } catch { return currency; }
 }
 function walletTx(user, id) { return (user.walletTransactions || []).find(tx => tx.id === id); }
 function ensureWallet(user) { if (!Number.isSafeInteger(user.walletBalanceCents) || user.walletBalanceCents < 0) user.walletBalanceCents = 0; if (!Array.isArray(user.walletTransactions)) user.walletTransactions = []; }
@@ -481,31 +515,32 @@ const server = http.createServer(async (req, res) => {
       const user = cookieSession(req)?.user;
       if (!user) return send(res, 401, { error: 'Sign in to view your funds.' });
       ensureWallet(user);
-      let fx = null; try { fx = await getUsdNgnRate(); } catch {}
+      const localCurrency = localCurrencyForCountry(user.country); let fx = null; try { fx = await getUsdLocalRate(localCurrency); } catch {}
       const fundingInstructions = {
         bankName: String(process.env.FUNDING_BANK_NAME || ''),
         accountName: String(process.env.FUNDING_BANK_ACCOUNT_NAME || ''),
         accountNumber: String(process.env.FUNDING_BANK_ACCOUNT_NUMBER || ''),
         note: String(process.env.FUNDING_PAYMENT_NOTE || 'Use only verified payment instructions from Gold Investment support. Never transfer to an unverified account.')
       };
-      return send(res, 200, { balanceCents: user.walletBalanceCents, transactions: [...user.walletTransactions].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))), fxRate: fx?.rate || null, fxSource: fx?.source || null, fundingInstructions, minimumMetalPurchaseCents: MINIMUM_PURCHASE_CENTS });
+      return send(res, 200, { balanceCents: user.walletBalanceCents, transactions: [...user.walletTransactions].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))), fxRate: fx?.rate || null, fxSource: fx?.source || null, localCurrency, localCurrencyName: currencyName(localCurrency), country: user.country || '', fundingInstructions, minimumMetalPurchaseCents: MINIMUM_PURCHASE_CENTS });
     }
     if (req.method === 'POST' && url.pathname === '/api/account/wallet/deposits') {
       const user = cookieSession(req)?.user;
       if (!user) return send(res, 401, { error: 'Sign in before requesting a deposit.' });
       const input = await body(req);
-      const amountNgn = Number(input.amountNgn);
+      const localCurrency = localCurrencyForCountry(user.country);
+      const amountLocal = Number(input.amountLocal ?? input.amountNgn);
       const reference = String(input.reference || '').trim();
-      if (!Number.isSafeInteger(amountNgn) || amountNgn < 1_000 || amountNgn > 1_000_000_000_000) return send(res, 400, { error: 'Enter a deposit amount between ₦1,000 and ₦1,000,000,000,000.' });
+      if (!Number.isFinite(amountLocal) || amountLocal <= 0 || amountLocal > 1_000_000_000_000) return send(res, 400, { error: `Enter a valid deposit amount in ${localCurrency}.` });
       if (reference.length < 4 || reference.length > 120) return send(res, 400, { error: 'Enter the bank/payment reference from your completed transfer.' });
       if ([...state.users.values()].some(other => (other.walletTransactions || []).some(tx => tx.type === 'deposit' && tx.reference?.toLowerCase() === reference.toLowerCase()))) return send(res, 409, { error: 'That payment reference has already been submitted.' });
-      let fx; try { fx = await getUsdNgnRate(); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
-      const amountCents = Math.round((amountNgn / fx.rate) * 100);
-      if (!Number.isSafeInteger(amountCents) || amountCents < 1) return send(res, 400, { error: 'The deposit is too small to convert to USD.' });
+      let fx; try { fx = await getUsdLocalRate(localCurrency); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
+      const amountCents = Math.round((amountLocal / fx.rate) * 100);
+      if (!Number.isSafeInteger(amountCents) || amountCents < 100) return send(res, 400, { error: `The deposit must be worth at least USD 1.00 (approximately ${new Intl.NumberFormat('en', { style:'currency', currency:localCurrency }).format(fx.rate)}).` });
       ensureWallet(user);
-      const tx = { id: `FD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'deposit', status: 'pending_admin_review', amountCents, amountNgn, rateNgnPerUsd: fx.rate, reference, createdAt: new Date().toISOString(), currency: 'USD', localCurrency: 'NGN' };
+      const tx = { id: `FD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'deposit', status: 'pending_admin_review', amountCents, amountLocal, rateLocalPerUsd: fx.rate, localCurrency, ...(localCurrency === 'NGN' ? { amountNgn: amountLocal, rateNgnPerUsd: fx.rate } : {}), reference, createdAt: new Date().toISOString(), currency: 'USD' };
       user.walletTransactions.push(tx);
-      await log('wallet_deposit_submitted', { userId: user.id, transactionId: tx.id, amountNgn, amountCents, rateNgnPerUsd: fx.rate, reference });
+      await log('wallet_deposit_submitted', { userId: user.id, transactionId: tx.id, amountLocal, localCurrency, amountCents, rateLocalPerUsd: fx.rate, reference });
       return send(res, 202, { transaction: tx, balanceCents: user.walletBalanceCents, message: 'Deposit submitted for admin verification. Your available balance will be credited only after payment is confirmed.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/account/wallet/withdrawals') {
@@ -517,11 +552,13 @@ const server = http.createServer(async (req, res) => {
       if (!Number.isSafeInteger(amountCents) || amountCents < 100 || amountCents > 100_000_000_000) return send(res, 400, { error: 'Enter a withdrawal amount of at least $1.00.' });
       if (amountCents > user.walletBalanceCents) return send(res, 409, { error: 'Your available balance is too low for that withdrawal.' });
       if (bankName.length < 2 || bankName.length > 100 || accountName.length < 2 || accountName.length > 100 || !/^[0-9-]{6,24}$/.test(accountNumber)) return send(res, 400, { error: 'Enter a valid bank name, account name, and account number.' });
-      let fx; try { fx = await getUsdNgnRate(); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
-      const tx = { id: `WD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'withdrawal', status: 'pending_admin_review', amountCents, amountNgn: Math.round((amountCents / 100) * fx.rate), rateNgnPerUsd: fx.rate, bankName, accountName, accountNumber, createdAt: new Date().toISOString(), currency: 'USD', localCurrency: 'NGN' };
+      const localCurrency = localCurrencyForCountry(user.country);
+      let fx; try { fx = await getUsdLocalRate(localCurrency); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
+      const amountLocal = Math.round((amountCents / 100) * fx.rate * 100) / 100;
+      const tx = { id: `WD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'withdrawal', status: 'pending_admin_review', amountCents, amountLocal, rateLocalPerUsd: fx.rate, ...(localCurrency === 'NGN' ? { amountNgn: amountLocal, rateNgnPerUsd: fx.rate } : {}), localCurrency, bankName, accountName, accountNumber, createdAt: new Date().toISOString(), currency: 'USD' };
       user.walletBalanceCents -= amountCents;
       user.walletTransactions.push(tx);
-      await log('wallet_withdrawal_requested', { userId: user.id, transactionId: tx.id, amountCents, amountNgn: tx.amountNgn, rateNgnPerUsd: fx.rate });
+      await log('wallet_withdrawal_requested', { userId: user.id, transactionId: tx.id, amountCents, amountLocal, localCurrency, rateLocalPerUsd: fx.rate });
       return send(res, 202, { transaction: tx, balanceCents: user.walletBalanceCents, message: 'Withdrawal request submitted. The amount is reserved until admin review; it will be returned if the request is rejected.' });
     }
     if (req.method === 'POST' && url.pathname === '/api/account/wallet/purchase') {
