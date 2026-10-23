@@ -209,6 +209,21 @@ async function getBitcoinUsdSellRate() {
   if (!Number.isFinite(rate) || rate <= 0) throw new Error('Blockchain.com returned an invalid BTC/USD rate.');
   return rate;
 }
+let usdNgnRateCache = { rate: null, source: null, expiresAt: 0 };
+async function getUsdNgnRate() {
+  const configured = Number(process.env.USD_NGN_RATE);
+  if (Number.isFinite(configured) && configured > 0) return { rate: configured, source: 'Configured USD_NGN_RATE' };
+  if (usdNgnRateCache.rate && usdNgnRateCache.expiresAt > Date.now()) return usdNgnRateCache;
+  const response = await fetch('https://open.er-api.com/v6/latest/USD', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error('The NGN/USD exchange-rate service is unavailable. Set USD_NGN_RATE to a verified rate and try again.');
+  const data = await response.json();
+  const rate = Number(data?.rates?.NGN);
+  if (data?.result !== 'success' || !Number.isFinite(rate) || rate <= 0) throw new Error('The exchange-rate service returned an invalid NGN rate. Set USD_NGN_RATE to a verified rate and try again.');
+  usdNgnRateCache = { rate, source: 'Live reference rate', expiresAt: Date.now() + 15 * 60_000 };
+  return usdNgnRateCache;
+}
+function walletTx(user, id) { return (user.walletTransactions || []).find(tx => tx.id === id); }
+function ensureWallet(user) { if (!Number.isSafeInteger(user.walletBalanceCents) || user.walletBalanceCents < 0) user.walletBalanceCents = 0; if (!Array.isArray(user.walletTransactions)) user.walletTransactions = []; }
 function pricing(p) {
   const spotCents = Math.round(spot[p.metal] * p.weightOz * 100);
   const premiumCents = Math.round(spotCents * p.premiumPct);
@@ -461,6 +476,75 @@ const server = http.createServer(async (req, res) => {
       user.verificationMethod = null;
       await log('admin_identity_review_requested_preview', { userId: user.id, submittedAt: user.verificationSubmittedAt, documentType, issuingCountry, documentSides: requiredSides, documentsReceivedByServer: true });
       return send(res, 202, { customer: publicUser(user), message: 'Your request is in the admin review queue.' });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/account/wallet') {
+      const user = cookieSession(req)?.user;
+      if (!user) return send(res, 401, { error: 'Sign in to view your funds.' });
+      ensureWallet(user);
+      let fx = null; try { fx = await getUsdNgnRate(); } catch {}
+      const fundingInstructions = {
+        bankName: String(process.env.FUNDING_BANK_NAME || ''),
+        accountName: String(process.env.FUNDING_BANK_ACCOUNT_NAME || ''),
+        accountNumber: String(process.env.FUNDING_BANK_ACCOUNT_NUMBER || ''),
+        note: String(process.env.FUNDING_PAYMENT_NOTE || 'Use only verified payment instructions from Gold Investment support. Never transfer to an unverified account.')
+      };
+      return send(res, 200, { balanceCents: user.walletBalanceCents, transactions: [...user.walletTransactions].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))), fxRate: fx?.rate || null, fxSource: fx?.source || null, fundingInstructions, minimumMetalPurchaseCents: MINIMUM_PURCHASE_CENTS });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/account/wallet/deposits') {
+      const user = cookieSession(req)?.user;
+      if (!user) return send(res, 401, { error: 'Sign in before requesting a deposit.' });
+      const input = await body(req);
+      const amountNgn = Number(input.amountNgn);
+      const reference = String(input.reference || '').trim();
+      if (!Number.isSafeInteger(amountNgn) || amountNgn < 1_000 || amountNgn > 1_000_000_000_000) return send(res, 400, { error: 'Enter a deposit amount between ₦1,000 and ₦1,000,000,000,000.' });
+      if (reference.length < 4 || reference.length > 120) return send(res, 400, { error: 'Enter the bank/payment reference from your completed transfer.' });
+      if ([...state.users.values()].some(other => (other.walletTransactions || []).some(tx => tx.type === 'deposit' && tx.reference?.toLowerCase() === reference.toLowerCase()))) return send(res, 409, { error: 'That payment reference has already been submitted.' });
+      let fx; try { fx = await getUsdNgnRate(); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
+      const amountCents = Math.round((amountNgn / fx.rate) * 100);
+      if (!Number.isSafeInteger(amountCents) || amountCents < 1) return send(res, 400, { error: 'The deposit is too small to convert to USD.' });
+      ensureWallet(user);
+      const tx = { id: `FD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'deposit', status: 'pending_admin_review', amountCents, amountNgn, rateNgnPerUsd: fx.rate, reference, createdAt: new Date().toISOString(), currency: 'USD', localCurrency: 'NGN' };
+      user.walletTransactions.push(tx);
+      await log('wallet_deposit_submitted', { userId: user.id, transactionId: tx.id, amountNgn, amountCents, rateNgnPerUsd: fx.rate, reference });
+      return send(res, 202, { transaction: tx, balanceCents: user.walletBalanceCents, message: 'Deposit submitted for admin verification. Your available balance will be credited only after payment is confirmed.' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/account/wallet/withdrawals') {
+      const user = cookieSession(req)?.user;
+      if (!user) return send(res, 401, { error: 'Sign in before requesting a withdrawal.' });
+      const input = await body(req); ensureWallet(user);
+      const amountCents = Math.round(Number(input.amountUsd) * 100);
+      const bankName = String(input.bankName || '').trim(); const accountName = String(input.accountName || '').trim(); const accountNumber = String(input.accountNumber || '').trim();
+      if (!Number.isSafeInteger(amountCents) || amountCents < 100 || amountCents > 100_000_000_000) return send(res, 400, { error: 'Enter a withdrawal amount of at least $1.00.' });
+      if (amountCents > user.walletBalanceCents) return send(res, 409, { error: 'Your available balance is too low for that withdrawal.' });
+      if (bankName.length < 2 || bankName.length > 100 || accountName.length < 2 || accountName.length > 100 || !/^[0-9-]{6,24}$/.test(accountNumber)) return send(res, 400, { error: 'Enter a valid bank name, account name, and account number.' });
+      let fx; try { fx = await getUsdNgnRate(); } catch (error) { return send(res, 503, { error: error.message || 'The local exchange rate is unavailable.' }); }
+      const tx = { id: `WD-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'withdrawal', status: 'pending_admin_review', amountCents, amountNgn: Math.round((amountCents / 100) * fx.rate), rateNgnPerUsd: fx.rate, bankName, accountName, accountNumber, createdAt: new Date().toISOString(), currency: 'USD', localCurrency: 'NGN' };
+      user.walletBalanceCents -= amountCents;
+      user.walletTransactions.push(tx);
+      await log('wallet_withdrawal_requested', { userId: user.id, transactionId: tx.id, amountCents, amountNgn: tx.amountNgn, rateNgnPerUsd: fx.rate });
+      return send(res, 202, { transaction: tx, balanceCents: user.walletBalanceCents, message: 'Withdrawal request submitted. The amount is reserved until admin review; it will be returned if the request is rejected.' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/account/wallet/purchase') {
+      const user = cookieSession(req)?.user;
+      if (!user) return send(res, 401, { error: 'Sign in before buying with your wallet.' });
+      if (!purchaseVerificationApproved(user)) return send(res, 403, { error: 'Your identity review must be approved before buying metals.' });
+      const input = await body(req); ensureWallet(user);
+      const quoteId = String(input.quoteId || ''); const quote = quotes.get(quoteId);
+      if (!quote || quote.type !== 'purchase' || quote.expiresAt <= Date.now()) return send(res, 409, { error: 'The checkout quote has expired. Request a fresh quote before paying.' });
+      if (!Array.isArray(input.items) || JSON.stringify(input.items) !== JSON.stringify(quote.lines.map(line => ({ productId: line.productId, quantity: line.quantity })))) return send(res, 409, { error: 'The cart changed. Refresh your quote before using wallet funds.' });
+      if (quote.country.toLowerCase() !== String(user.country || '').toLowerCase() || quote.custodyPreference !== String(input.custodyPreference || '')) return send(res, 409, { error: 'The saved country or custody choice does not match this quote.' });
+      if (user.walletBalanceCents < quote.totalCents) return send(res, 409, { error: 'Your wallet balance is not enough for this order. Choose another payment method.' });
+      for (const line of quote.lines) { const product = products.find(item => item.id === line.productId); if (!product || product.stock < line.quantity) return send(res, 409, { error: `${line.name} is no longer available in the requested quantity.` }); }
+      for (const line of quote.lines) products.find(item => item.id === line.productId).stock -= line.quantity;
+      user.walletBalanceCents -= quote.totalCents;
+      const now = new Date();
+      const order = { id: `GI-${crypto.randomBytes(4).toString('hex').toUpperCase()}`, status: 'paid', paymentMethod: 'wallet', paymentStatus: 'paid', fulfillmentStatus: 'processing', custodyPreference: quote.custodyPreference, vaultDurationMonths: quote.vaultDurationMonths || null, createdAt: now.toISOString(), customer: { name: user.name, email: user.email, address: user.address, city: user.city, region: user.region, country: user.country, postalCode: user.postalCode }, lines: quote.lines, subtotalCents: quote.subtotalCents, serviceFeeCents: quote.serviceFeeCents, taxCents: quote.taxCents, taxRatePct: quote.taxRate * 100, totalCents: quote.totalCents, currency: 'USD', walletPayment: { paidAt: now.toISOString(), amountCents: quote.totalCents } };
+      if (quote.custodyPreference === 'vault') { const unlockAt = new Date(now); unlockAt.setUTCMonth(unlockAt.getUTCMonth() + quote.vaultDurationMonths); order.vault = { status: 'locked', paymentTag: 'VAULT PAYMENT', amountCents: quote.subtotalCents, durationMonths: quote.vaultDurationMonths, approvedAt: now.toISOString(), unlockAt: unlockAt.toISOString(), lines: quote.lines.map(line => ({ productId: line.productId, name: line.name, metal: line.metal, weightOz: line.weightOz || null, purity: line.purity || 'Not recorded', quantity: line.quantity })) }; }
+      state.orders.push(order);
+      user.walletTransactions.push({ id: `BUY-${crypto.randomBytes(5).toString('hex').toUpperCase()}`, type: 'purchase', status: 'completed', amountCents: -quote.totalCents, createdAt: now.toISOString(), currency: 'USD', orderId: order.id, note: 'Metal purchase paid from wallet balance.' });
+      quotes.delete(quoteId);
+      await log('wallet_metal_purchase_paid', { userId: user.id, orderId: order.id, amountCents: quote.totalCents, custodyPreference: quote.custodyPreference });
+      return send(res, 201, { order: { id: order.id, status: order.status, paymentStatus: order.paymentStatus, fulfillmentStatus: order.fulfillmentStatus, totalCents: order.totalCents }, balanceCents: user.walletBalanceCents, message: 'Order paid from your wallet balance. Fulfillment is now processing.' });
     }
     if (req.method === 'GET' && url.pathname === '/api/account/dashboard') {
       const user = cookieSession(req)?.user;
@@ -828,10 +912,32 @@ const server = http.createServer(async (req, res) => {
       await log('admin_customer_personal_data_erased', { removedOrders, removedSellRequests });
       return send(res, 200, { ok: true, message: `The account and linked personal records were permanently removed from the active application store (${removedOrders} purchase records and ${removedSellRequests} sell records).`, removedOrders, removedSellRequests });
     }
+    const walletDecisionMatch = url.pathname.match(/^\/api\/admin\/wallet-requests\/([^/]+)\/decision$/);
+    if (req.method === 'POST' && walletDecisionMatch) {
+      if (!adminAuthorized(req)) return send(res, 401, { error: 'Admin authorization required.' });
+      const input = await body(req); const decision = String(input.decision || '');
+      if (!['approve','reject'].includes(decision)) return send(res, 400, { error: 'Choose approve or reject.' });
+      const transactionId = decodeURIComponent(walletDecisionMatch[1]);
+      let owner = null, tx = null;
+      for (const candidate of state.users.values()) { const found = walletTx(candidate, transactionId); if (found) { owner = candidate; tx = found; break; } }
+      if (!owner || !tx || !['deposit','withdrawal'].includes(tx.type)) return send(res, 404, { error: 'Wallet request not found.' });
+      if (tx.status !== 'pending_admin_review') return send(res, 409, { error: 'This wallet request has already been reviewed.' });
+      ensureWallet(owner);
+      const reviewer = adminSessions.get(adminTokenFromRequest(req))?.email || 'admin';
+      if (decision === 'approve') {
+        if (tx.type === 'deposit') owner.walletBalanceCents += tx.amountCents;
+        tx.status = 'completed'; tx.reviewedAt = new Date().toISOString(); tx.reviewedBy = reviewer;
+      } else {
+        if (tx.type === 'withdrawal') owner.walletBalanceCents += tx.amountCents;
+        tx.status = 'rejected'; tx.reviewedAt = new Date().toISOString(); tx.reviewedBy = reviewer;
+      }
+      await log(`wallet_${tx.type}_${decision}d`, { userId: owner.id, transactionId: tx.id, amountCents: tx.amountCents, reviewer });
+      return send(res, 200, { transaction: tx, balanceCents: owner.walletBalanceCents, message: decision === 'approve' ? `${tx.type === 'deposit' ? 'Deposit credited' : 'Withdrawal approved'} successfully.` : `${tx.type === 'deposit' ? 'Deposit rejected; no balance was credited.' : 'Withdrawal rejected; reserved balance returned to the customer.'}` });
+    }
     if (req.method === 'GET' && url.pathname === '/api/admin/summary') {
       if (!adminAuthorized(req)) return send(res, 401, { error: 'Admin authorization required. Sign in to the staff portal again.' });
       await releaseExpiredCryptoReservations();
-      return send(res, 200, { mode: 'preview', inventory: products.map(pricing), prices: { source: priceSource, asOf: priceAsOf, metals: { ...spot } }, orders: state.orders, sellOrders: state.sales, customers: [...state.users.values()].map(user => ({ ...publicUser(user), verificationStatus: user.verificationStatus || 'not_started' })), customerCount: state.users.size, audit: [...state.audit].reverse() });
+      return send(res, 200, { mode: 'preview', inventory: products.map(pricing), prices: { source: priceSource, asOf: priceAsOf, metals: { ...spot } }, orders: state.orders, sellOrders: state.sales, walletRequests: [...state.users.values()].flatMap(user => (user.walletTransactions || []).filter(tx => ['deposit','withdrawal'].includes(tx.type) && tx.status === 'pending_admin_review').map(tx => ({ ...tx, customer: { id: user.id, name: user.name, email: user.email } }))).reverse(), customers: [...state.users.values()].map(user => ({ ...publicUser(user), verificationStatus: user.verificationStatus || 'not_started' })), customerCount: state.users.size, audit: [...state.audit].reverse() });
     }
     if (req.method === 'GET') return serveFile(req, res, url.pathname);
     return send(res, 405, { error: 'Method not allowed' });

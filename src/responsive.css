@@ -232,3 +232,5 @@ table{max-width:100%}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+@media(max-width:700px){.wallet-summary-grid{grid-template-columns:1fr}.wallet-balance-card,.wallet-rate-card{padding:19px}.wallet-actions{display:grid;grid-template-columns:1fr}.wallet-actions .button{width:100%;justify-content:center}.wallet-buy-prompt{align-items:stretch}.wallet-buy-prompt>div{flex-basis:100%}.wallet-buy-prompt .button{width:100%;justify-content:center}.wallet-form{grid-template-columns:1fr}.wallet-form-actions{grid-column:1}.wallet-form-actions .button{flex:1;justify-content:center}.wallet-payment-details div{grid-template-columns:1fr;gap:4px}.wallet-history-list article{grid-template-columns:28px minmax(0,1fr)}.wallet-history-amount{grid-column:2;grid-row:2;display:flex;align-items:center;justify-content:space-between;justify-items:initial;text-align:left}.wallet-history-icon{grid-row:1 / span 2}.wallet-conversion-preview{grid-template-columns:1fr auto}.wallet-checkout-choice .button{width:100%;justify-content:center}}
