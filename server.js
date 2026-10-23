@@ -23,7 +23,7 @@ const PORT = Number.isInteger(parsedPort) && parsedPort >= 1 && parsedPort < 655
 if (configuredPort && PORT !== parsedPort) {
   console.warn(`Invalid PORT value (${JSON.stringify(configuredPort)}); using ${DEFAULT_PORT}.`);
 }
-const MINIMUM_PURCHASE_CENTS = 200_000;
+const MINIMUM_PURCHASE_CENTS = 1_000_000;
 const MINIMUM_SELL_CENTS = 1_000_000;
 const products = [
   { id: 'au-1oz-eagle', slug: 'american-gold-eagle-1oz', name: 'American Gold Eagle', metal: 'gold', weightOz: 1, purity: '22 karat · 91.67%', type: 'Coin', premiumPct: 0.055, stock: 14, image: 'gold-coin', badge: 'Bestseller' },
@@ -642,7 +642,7 @@ const server = http.createServer(async (req, res) => {
         lines.push({ productId: p.id, name: p.name, metal: p.metal, weightOz: p.weightOz, purity: p.purity, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
-      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.', minimumPurchaseCents: MINIMUM_PURCHASE_CENTS, subtotalCents });
+      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum initial purchase requirement is $10,000.00 USD per order.', minimumPurchaseCents: MINIMUM_PURCHASE_CENTS, subtotalCents });
       const configuredTaxRate = Number(process.env.CHECKOUT_ESTIMATED_TAX_RATE ?? 0.08);
       const taxRate = Number.isFinite(configuredTaxRate) && configuredTaxRate >= 0 && configuredTaxRate <= 1 ? configuredTaxRate : 0.08;
       const configuredDeliveryCents = Number(process.env.CHECKOUT_DELIVERY_FEE_CENTS ?? 2500);
@@ -676,7 +676,7 @@ const server = http.createServer(async (req, res) => {
       if (!quote || quote.type !== 'purchase' || quote.expiresAt <= Date.now()) return send(res, 409, { error: 'The checkout quote has expired. Refresh and accept a current price before starting payment.' });
       if (!Array.isArray(input.items) || JSON.stringify(input.items) !== JSON.stringify(quote.lines.map(line => ({ productId: line.productId, quantity: line.quantity })))) return send(res, 409, { error: 'The cart changed. Review it and request a fresh checkout quote.' });
       if (quote.country.toLowerCase() !== String(user.country || '').toLowerCase() || quote.custodyPreference !== String(input.custodyPreference || '')) return send(res, 409, { error: 'The saved country or custody choice does not match this quote. Return to checkout and refresh the quote.' });
-      if (quote.subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.' });
+      if (quote.subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum initial purchase requirement is $10,000.00 USD per order.' });
       for (const line of quote.lines) { const product = products.find(item => item.id === line.productId); if (!product || product.stock < line.quantity) return send(res, 409, { error: `${line.name} is no longer available in the requested quantity.` }); }
       let rateUsd = null; let amountSatoshis = null; let amountUnits = null;
       if (isBitcoin) {
@@ -785,7 +785,7 @@ const server = http.createServer(async (req, res) => {
         const current = pricing(p); lines.push({ productId: p.id, name: p.name, metal: p.metal, weightOz: p.weightOz, purity: p.purity, quantity: qty, unitPriceCents: current.priceCents, lineTotalCents: current.priceCents * qty });
       }
       const subtotalCents = lines.reduce((a, x) => a + x.lineTotalCents, 0);
-      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum purchase is $2,000.00 USD per order.' });
+      if (subtotalCents < MINIMUM_PURCHASE_CENTS) return send(res, 422, { error: 'Minimum initial purchase requirement is $10,000.00 USD per order.' });
       if (JSON.stringify(lines) !== JSON.stringify(quote.lines) || subtotalCents !== quote.subtotalCents) return send(res, 409, { error: 'The bullion price or cart changed during checkout. Request and accept a fresh quote before placing this order.', priceChanged: true, currentLines: lines, currentSubtotalCents: subtotalCents });
       const totalCents = quote.totalCents;
       quotes.delete(input.quoteId);

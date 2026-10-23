@@ -4,4 +4,4 @@ CRYPTO_BTC_RECEIVE_ADDRESS=15RsgmaFM74gDTpXtx1GvtJvCgGWsp2f76
 CRYPTO_EVM_RECEIVE_ADDRESS=0x07e1837af933c566bd1f5d228b47b4cbced4cd57
 CRYPTO_TRON_RECEIVE_ADDRESS=TKT5JSenfCMAAeu9ezhvqeAGievbWBfHqG
 
-Crypto checkout remains disabled unless CRYPTO_PAYMENTS_ENABLED=true is set. Before enabling it in production, confirm you control these wallets, configure the required network verification services/API keys, deploy, and test with small transactions. A code check cannot prove wallet ownership or live on-chain payment detection. Minimum purchase is $2,000 USD; minimum sell is $10,000 USD.
+Crypto checkout remains disabled unless CRYPTO_PAYMENTS_ENABLED=true is set. Before enabling it in production, confirm you control these wallets, configure the required network verification services/API keys, deploy, and test with small transactions. A code check cannot prove wallet ownership or live on-chain payment detection. Minimum initial purchase requirement is $10,000 USD; minimum account balance is $25,000 USD; minimum sell is $10,000 USD. Account set-up fee is $50; storage fees are $100 or $15 depending on storage type; annual account administration fee is $125.
