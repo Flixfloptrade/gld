@@ -70,3 +70,12 @@
 
 
 .investment-requirements{margin:32px 0;padding:clamp(22px,4vw,38px);background:#eeece6;border:1px solid #ded8ca;color:#302d25}.investment-requirements h2{font:400 clamp(27px,4vw,36px)/1.2 var(--serif);margin:10px 0 20px}.investment-requirements h3{font:400 21px var(--serif);margin:23px 0 7px}.investment-requirements p{max-width:900px;color:#6f695d;font-size:12px;line-height:1.9;margin:8px 0}
+
+.funding-unavailable-backdrop{position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:20px;background:rgba(16,15,12,.68)}
+.funding-unavailable-dialog{position:relative;width:min(100%,480px);padding:34px 30px 28px;background:#fffdf8;border:1px solid #d4b770;box-shadow:0 24px 80px #0005;color:#27251f;text-align:center}
+.funding-unavailable-icon{display:grid;place-items:center;width:44px;height:44px;margin:0 auto 14px;border-radius:50%;background:#f0e8d5;color:#8a6d35;font-size:24px}
+.funding-unavailable-dialog h2{margin:0 24px 12px;font:400 27px/1.2 var(--serif)}
+.funding-unavailable-dialog p{margin:10px 0;color:#6d675c;font-size:13px;line-height:1.7}
+.funding-unavailable-dialog .button{margin-top:12px;min-width:130px;justify-content:center}
+.funding-unavailable-close{position:absolute;top:9px;right:12px;border:0;background:transparent;color:#625b4e;font-size:27px;line-height:1;cursor:pointer}
+@media(max-width:480px){.funding-unavailable-dialog{padding:30px 20px 22px}.funding-unavailable-dialog h2{font-size:24px}}
