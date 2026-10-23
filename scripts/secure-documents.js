@@ -3,7 +3,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 function createSecureDocuments(root) {
-  const directory = path.resolve(root, process.env.VERIFICATION_DOCUMENTS_DIR || 'data/identity-documents');
+  // Keep document blobs and their key under the configured persistent data directory.
+  // If DATA_DIR points at a mounted disk, this prevents the document store from
+  // silently using a separate ephemeral directory after a deploy/restart.
+  const configuredDirectory = process.env.VERIFICATION_DOCUMENTS_DIR || path.join(process.env.DATA_DIR || 'data', 'identity-documents');
+  const directory = path.resolve(root, configuredDirectory);
   const keyPath = path.join(directory, '.key');
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   let key;
@@ -33,11 +37,21 @@ function createSecureDocuments(root) {
 
   function get(id) {
     if (!/^[0-9a-f-]{36}$/i.test(String(id))) throw new Error('Invalid document reference.');
-    const envelope = fs.readFileSync(path.join(directory, `${id}.enc`));
-    if (envelope.length < 32 || envelope.subarray(0, 4).toString() !== 'GID1') throw new Error('Invalid encrypted document.');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, envelope.subarray(4, 16));
-    decipher.setAuthTag(envelope.subarray(16, 32));
-    return Buffer.concat([decipher.update(envelope.subarray(32)), decipher.final()]);
+    const filePath = path.join(directory, `${id}.enc`);
+    let envelope;
+    try { envelope = fs.readFileSync(filePath); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw new Error('Encrypted document file is missing from the configured document store. Check VERIFICATION_DOCUMENTS_DIR/DATA_DIR and persistent storage.');
+      throw error;
+    }
+    if (envelope.length < 32 || envelope.subarray(0, 4).toString() !== 'GID1') throw new Error('Invalid encrypted document format.');
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, envelope.subarray(4, 16));
+      decipher.setAuthTag(envelope.subarray(16, 32));
+      return Buffer.concat([decipher.update(envelope.subarray(32)), decipher.final()]);
+    } catch {
+      throw new Error('Document decryption failed: the encryption key does not match the key used at upload, or the encrypted file is damaged. Restore the original VERIFICATION_DOCUMENTS_KEY and encrypted file backup.');
+    }
   }
 
   function remove(id) {

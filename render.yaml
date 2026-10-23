@@ -13,6 +13,8 @@ services:
         sync: false
       - key: DATA_DIR
         value: ./data
+      - key: VERIFICATION_DOCUMENTS_KEY
+        sync: false
       - key: ADMIN_EMAIL
         value: lasisfantasen@hotmail.com
       - key: SELL_WORKFLOW_ENABLED
