@@ -412,6 +412,14 @@ const server = http.createServer(async (req, res) => {
       state.users.set(email, user); state.usersById.set(user.id, user);
       const token = crypto.randomBytes(32).toString('base64url'); sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
       await log('customer_signup_preview', { userId: user.id });
+      // Email is best-effort: a temporary email-provider outage must not undo signup.
+      try {
+        const { sendWelcomeEmail } = require('./services/email');
+        const emailResult = await sendWelcomeEmail({ to: user.email, firstName: user.firstName });
+        if (emailResult?.skipped) console.warn('Welcome email skipped:', emailResult.reason);
+      } catch (emailError) {
+        console.error('Welcome email could not be sent for customer:', user.id, emailError.message);
+      }
       return send(res, 201, { user: publicUser(user), mode: 'preview' }, { 'Set-Cookie': sessionCookie(token, req) });
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {
