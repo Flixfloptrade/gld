@@ -1,0 +1,93 @@
+/*
+ * Gold Investment — restrained 3D visual layer
+ * CSS-only depth effects: no new runtime dependency, and no changes to routes,
+ * checkout, authentication, admin workflows, or API behavior.
+ */
+:root {
+  --depth-shadow: 0 22px 54px rgba(31, 24, 12, .13);
+  --depth-shadow-hover: 0 30px 68px rgba(31, 24, 12, .22);
+  --gold-edge: rgba(199, 166, 106, .58);
+}
+body { perspective: 1400px; }
+.header, .announcement, footer { transform-style: preserve-3d; }
+.header { box-shadow: 0 5px 18px rgba(22, 20, 14, .035); }
+.brand-mark { box-shadow: inset 0 1px 0 #fff9, 0 4px 10px #7f632322; transition: transform .35s ease, box-shadow .35s ease; }
+.brand:hover .brand-mark { transform: translateY(-2px) rotateY(-16deg) rotateX(8deg); box-shadow: 0 8px 16px #7f632333; }
+
+.hero.hero-cinematic { isolation: isolate; perspective: 1200px; }
+.hero.hero-cinematic::after {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 76% 48%, rgba(206, 165, 80, .12), transparent 43%),
+              linear-gradient(115deg, transparent 48%, rgba(255,255,255,.025) 49%, transparent 50%);
+}
+.hero.hero-cinematic .hero-copy { z-index: 2; }
+.hero-metal-pair { perspective: 1250px; transform-style: preserve-3d; }
+.hero-metal { backface-visibility: hidden; transform-style: preserve-3d; border-color: var(--gold-edge); }
+.hero-metal-gold { box-shadow: 0 34px 75px #000b, 1px 1px 0 #f5dc9b55, inset 0 0 0 1px #f5dc9b20; }
+.hero-metal-silver { box-shadow: 0 28px 65px #000b, 1px 1px 0 #fff5, inset 0 0 0 1px #fff2; }
+.hero-metal-gold:hover { box-shadow: 0 44px 90px #000c, 0 0 38px #c7a66a18; }
+.hero-metal-silver:hover { transform: rotateY(3deg) rotateZ(-1deg) translateY(-7px) translateZ(18px); }
+.hero.hero-cinematic .hero-copy h1 { text-shadow: 0 4px 28px #0008; }
+.hero.hero-cinematic .hero-copy .button,
+.hero.hero-cinematic .hero-copy a.button { box-shadow: 0 7px 0 #705426, 0 12px 28px #0005; transition: transform .22s ease, box-shadow .22s ease; }
+.hero.hero-cinematic .hero-copy .button:hover,
+.hero.hero-cinematic .hero-copy a.button:hover { transform: translateY(-3px); box-shadow: 0 10px 0 #705426, 0 18px 32px #0006; }
+
+.product-card, .dashboard-grid > section, .account-panel, .admin-block,
+.checkout-quote, .checkout-form, .sell-quote, .calc-card, .price-card {
+  transform-style: preserve-3d;
+  transition: transform .32s ease, box-shadow .32s ease, border-color .32s ease;
+}
+.product-card {
+  border: 1px solid rgba(126, 107, 70, .12);
+  box-shadow: 0 7px 18px rgba(33, 29, 20, .045);
+}
+.product-card:hover {
+  transform: translateY(-7px) rotateX(1.2deg);
+  box-shadow: var(--depth-shadow);
+  border-color: var(--gold-edge);
+  z-index: 2;
+}
+.product-image { perspective: 800px; transform-style: preserve-3d; }
+.product-image .metal-object { transform: translateZ(18px); filter: drop-shadow(0 20px 15px #53462544); }
+.product-card:hover .metal-coin { transform: translateY(-5px) rotateY(-12deg) rotateX(5deg) translateZ(28px); }
+.product-card:hover .metal-bar { transform: translateY(-5px) rotateY(-10deg) rotateX(4deg) translateZ(28px); }
+.product-image .metal-coin, .product-image .metal-bar { transition: transform .45s cubic-bezier(.2,.7,.2,1), filter .45s ease; }
+.product-image::after {
+  content: ""; position: absolute; inset: auto 8% 8% 8%; height: 14px; border-radius: 50%;
+  background: #5a4828; filter: blur(15px); opacity: .17; transform: translateZ(0); pointer-events: none;
+}
+button, .button, .link-button, .cart-button, input, select, textarea {
+  transition: box-shadow .22s ease, transform .22s ease, border-color .22s ease, background-color .22s ease;
+}
+button:active, .button:active, .cart-button:active { transform: translateY(1px); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid #b7965d; outline-offset: 3px;
+}
+.cart-button:hover, .link-button:hover { box-shadow: 0 6px 15px rgba(39, 31, 18, .09); }
+.marketplace-toolbar, .marketplace-results { border-color: rgba(126, 107, 70, .22); }
+.dashboard-grid > section, .account-panel, .admin-block, .checkout-quote,
+.checkout-form, .sell-quote, .calc-card, .price-card {
+  box-shadow: 0 8px 24px rgba(31, 24, 12, .055);
+}
+.dashboard-grid > section:hover, .account-panel:hover, .admin-block:hover,
+.checkout-quote:hover, .sell-quote:hover, .calc-card:hover, .price-card:hover {
+  box-shadow: var(--depth-shadow);
+}
+.hero-image .hero-art { transform-style: preserve-3d; perspective: 1000px; }
+.hero-image .gold-disc { transform: translateZ(16px) rotateY(-8deg); box-shadow: inset 0 0 0 9px #d8b560, inset 0 0 0 13px #74521e, inset 0 0 0 18px #d9b35d, 0 28px 35px #0007; }
+.hero-image .bar { transform: translateZ(48px) rotateY(-15deg) rotateX(4deg); }
+@media (hover: hover) and (pointer: fine) {
+  .hero-image .hero-art { transition: transform .5s ease; }
+  .hero-image:hover .hero-art { transform: rotateY(-4deg) rotateX(2deg) translateY(-3px); }
+}
+@media (max-width: 800px) {
+  .hero-metal-pair { perspective: 850px; }
+  .product-card:hover, .dashboard-grid > section:hover, .account-panel:hover,
+  .admin-block:hover, .checkout-quote:hover, .sell-quote:hover, .calc-card:hover,
+  .price-card:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  .product-card:hover, .hero-metal:hover, .brand:hover .brand-mark { transform: none !important; }
+}
