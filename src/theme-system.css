@@ -32,7 +32,7 @@ html { background:var(--gi-bg); transition:background .25s ease,color .25s ease;
 body { background:var(--gi-bg) !important; color:var(--gi-text) !important; transition:background .25s ease,color .25s ease; }
 #root { background:var(--gi-bg); color:var(--gi-text); }
 .gi-theme-toggle {
-  position:fixed; z-index:10000; right:18px; bottom:18px;
+  position:fixed; z-index:10000; left:18px; right:auto; bottom:18px;
   display:flex; align-items:center; gap:9px; padding:11px 15px;
   border:1px solid var(--gi-border); border-radius:999px;
   background:linear-gradient(135deg,var(--gi-panel-soft),var(--gi-panel));
@@ -180,7 +180,7 @@ body { background:var(--gi-bg) !important; color:var(--gi-text) !important; tran
 button,.primary-button,.button-gold { transition:transform .18s ease,filter .18s ease,background .2s ease; }
 button:hover,.primary-button:hover,.button-gold:hover { filter:brightness(1.04); }
 @media(max-width:600px) {
- .gi-theme-toggle { right:12px; bottom:12px; padding:10px 12px; }
+ .gi-theme-toggle { left:12px; right:auto; bottom:12px; padding:10px 12px; }
  .gi-theme-toggle-label { font-size:11px; }
 }
 @media(prefers-reduced-motion:reduce) {
@@ -242,7 +242,7 @@ body, #root { background:var(--gi-page-gradient) !important; color:var(--gi-text
 :root[data-gi-theme="light"] #root :where(.mobile-menu,.mobile-nav,.nav-drawer,.account-sidebar,.admin-nav) { background:#f4f7fa !important; color:#172433 !important; }
 .gi-theme-toggle { touch-action:manipulation; min-height:44px; }
 @media (max-width: 640px) {
-  .gi-theme-toggle { right:12px; bottom:12px; min-height:44px; max-width:calc(100vw - 24px); }
+  .gi-theme-toggle { left:12px; right:auto; bottom:12px; min-height:44px; max-width:calc(100vw - 24px); }
   #root :where(.account-main,.account-content,.admin-portal-content,.admin-shell,main) { min-width:0; }
   #root :where(table) { max-width:100%; }
 }
