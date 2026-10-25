@@ -10,4 +10,6 @@ import './saudi.css';
 import './responsive.css';
 import './upgrade-theme.css';
 
+import './theme-system.css';
+
 createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);

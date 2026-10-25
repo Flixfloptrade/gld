@@ -1,0 +1,188 @@
+
+/* Gold Investment theme system: persistent, app-wide light/dark palettes. */
+:root {
+  color-scheme: dark;
+  --gi-bg: #07111b;
+  --gi-bg-raised: #0d1b29;
+  --gi-panel: #102232;
+  --gi-panel-soft: #142a3b;
+  --gi-text: #f2f5f8;
+  --gi-text-muted: #a7b5c3;
+  --gi-border: rgba(190, 211, 229, .17);
+  --gi-gold: #e9bd67;
+  --gi-gold-deep: #b98535;
+  --gi-shadow: 0 22px 55px rgba(0,0,0,.28);
+  --gi-radius: 18px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --gi-bg: #f4f6f8;
+  --gi-bg-raised: #ffffff;
+  --gi-panel: #ffffff;
+  --gi-panel-soft: #edf1f5;
+  --gi-text: #172433;
+  --gi-text-muted: #5c6b7a;
+  --gi-border: rgba(31, 52, 72, .16);
+  --gi-gold: #a97520;
+  --gi-gold-deep: #80530f;
+  --gi-shadow: 0 18px 45px rgba(25, 43, 60, .10);
+}
+html, body, #root { min-height:100%; }
+html { background:var(--gi-bg); transition:background .25s ease,color .25s ease; }
+body { background:var(--gi-bg) !important; color:var(--gi-text) !important; transition:background .25s ease,color .25s ease; }
+#root { background:var(--gi-bg); color:var(--gi-text); }
+.gi-theme-toggle {
+  position:fixed; z-index:10000; right:18px; bottom:18px;
+  display:flex; align-items:center; gap:9px; padding:11px 15px;
+  border:1px solid var(--gi-border); border-radius:999px;
+  background:linear-gradient(135deg,var(--gi-panel-soft),var(--gi-panel));
+  color:var(--gi-text); box-shadow:var(--gi-shadow); cursor:pointer;
+  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+}
+.gi-theme-toggle:hover { transform:translateY(-3px); border-color:var(--gi-gold); box-shadow:0 14px 36px rgba(201,151,62,.2); }
+.gi-theme-toggle>span:first-child { color:var(--gi-gold); font-size:20px; line-height:1; }
+.gi-theme-toggle-label { font-size:12px; font-weight:700; letter-spacing:.02em; }
+:root[data-theme="dark"] .announcement,
+:root[data-theme="dark"] .header,
+:root[data-theme="dark"] header,
+:root[data-theme="dark"] footer,
+:root[data-theme="dark"] .site-footer { background-color:#07111b; color:var(--gi-text); border-color:var(--gi-border); }
+:root[data-theme="dark"] .route-page,
+:root[data-theme="dark"] main,
+:root[data-theme="dark"] .account-main,
+:root[data-theme="dark"] .account-shell,
+:root[data-theme="dark"] .account-content,
+:root[data-theme="dark"] .admin-portal-content,
+:root[data-theme="dark"] .admin-portal,
+:root[data-theme="dark"] .admin-shell { background-color:var(--gi-bg) !important; color:var(--gi-text) !important; }
+:root[data-theme="dark"] .route-page h1,
+:root[data-theme="dark"] .route-page h2,
+:root[data-theme="dark"] .route-page h3,
+:root[data-theme="dark"] .account-main h1,
+:root[data-theme="dark"] .account-main h2,
+:root[data-theme="dark"] .admin-portal-content h1,
+:root[data-theme="dark"] .admin-portal-content h2,
+:root[data-theme="dark"] label { color:var(--gi-text); }
+:root[data-theme="dark"] .route-lead,
+:root[data-theme="dark"] .route-page p,
+:root[data-theme="dark"] .account-main p,
+:root[data-theme="dark"] .admin-portal-content p,
+:root[data-theme="dark"] .dashboard-grid p,
+:root[data-theme="dark"] small { color:var(--gi-text-muted); }
+:root[data-theme="dark"] .product-card,
+:root[data-theme="dark"] .product-detail,
+:root[data-theme="dark"] .dashboard-grid>section,
+:root[data-theme="dark"] .sell-quote,
+:root[data-theme="dark"] .auth-form,
+:root[data-theme="dark"] .account-panel,
+:root[data-theme="dark"] .admin-block,
+:root[data-theme="dark"] .admin-stat,
+:root[data-theme="dark"] .admin-stats>div,
+:root[data-theme="dark"] .admin-price-cards>div,
+:root[data-theme="dark"] .checkout-form,
+:root[data-theme="dark"] .checkout-review-step,
+:root[data-theme="dark"] .checkout-quote,
+:root[data-theme="dark"] .preview-notice,
+:root[data-theme="dark"] .toast,
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .dialog,
+:root[data-theme="dark"] .calc-card,
+:root[data-theme="dark"] .price-card {
+  background:linear-gradient(145deg,var(--gi-panel),var(--gi-bg-raised)) !important;
+  color:var(--gi-text) !important; border-color:var(--gi-border) !important;
+  box-shadow:var(--gi-shadow);
+}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background-color:#0a1723 !important; color:var(--gi-text) !important;
+  border-color:var(--gi-border) !important;
+}
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder { color:#8193a3; }
+:root[data-theme="dark"] table,
+:root[data-theme="dark"] .admin-table { color:var(--gi-text); border-color:var(--gi-border); }
+:root[data-theme="dark"] th { background:#14283a !important; color:#f2f5f8 !important; }
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] tr { border-color:var(--gi-border) !important; }
+:root[data-theme="dark"] .admin-nav,
+:root[data-theme="dark"] .account-sidebar,
+:root[data-theme="dark"] .account-sidebar nav { background:#0b1926 !important; color:var(--gi-text) !important; border-color:var(--gi-border) !important; }
+:root[data-theme="dark"] a:not(.button):not(.primary-button) { text-decoration-color:var(--gi-gold); }
+:root[data-theme="dark"] .primary-button,
+:root[data-theme="dark"] button.primary,
+:root[data-theme="dark"] .button-gold { background:linear-gradient(135deg,#f4d48d,#c8953d) !important; color:#1c1a14 !important; border-color:#e5bb69 !important; }
+:root[data-theme="dark"] .floating-customer-support { background:linear-gradient(135deg,#f4d48d,#b98431); color:#1b1a16; box-shadow:0 12px 30px rgba(201,151,62,.25); }
+/* Light mode reaches all customer, checkout, account, and admin surfaces. */
+:root[data-theme="light"] body,
+:root[data-theme="light"] #root { background:var(--gi-bg) !important; color:var(--gi-text) !important; }
+:root[data-theme="light"] .announcement { background:#172637; color:#f7f8fa; }
+:root[data-theme="light"] .route-page,
+:root[data-theme="light"] .account-main,
+:root[data-theme="light"] .account-shell,
+:root[data-theme="light"] .account-content,
+:root[data-theme="light"] .admin-portal-content,
+:root[data-theme="light"] .admin-portal,
+:root[data-theme="light"] .admin-shell { background:var(--gi-bg) !important; color:var(--gi-text) !important; }
+:root[data-theme="light"] .route-page h1,
+:root[data-theme="light"] .route-page h2,
+:root[data-theme="light"] .route-page h3,
+:root[data-theme="light"] .account-main h1,
+:root[data-theme="light"] .account-main h2,
+:root[data-theme="light"] .admin-portal-content h1,
+:root[data-theme="light"] .admin-portal-content h2,
+:root[data-theme="light"] label { color:var(--gi-text); }
+:root[data-theme="light"] .route-lead,
+:root[data-theme="light"] .route-page p,
+:root[data-theme="light"] .account-main p,
+:root[data-theme="light"] .admin-portal-content p,
+:root[data-theme="light"] small { color:var(--gi-text-muted); }
+:root[data-theme="light"] .product-card,
+:root[data-theme="light"] .product-detail,
+:root[data-theme="light"] .dashboard-grid>section,
+:root[data-theme="light"] .sell-quote,
+:root[data-theme="light"] .auth-form,
+:root[data-theme="light"] .account-panel,
+:root[data-theme="light"] .admin-block,
+:root[data-theme="light"] .admin-stat,
+:root[data-theme="light"] .admin-stats>div,
+:root[data-theme="light"] .admin-price-cards>div,
+:root[data-theme="light"] .checkout-form,
+:root[data-theme="light"] .checkout-review-step,
+:root[data-theme="light"] .checkout-quote,
+:root[data-theme="light"] .preview-notice,
+:root[data-theme="light"] .calc-card,
+:root[data-theme="light"] .price-card {
+  background:linear-gradient(145deg,#fff,#f0f3f6) !important;
+  color:var(--gi-text) !important; border-color:var(--gi-border) !important;
+}
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea { background:#fff !important; color:#172433 !important; border-color:var(--gi-border) !important; }
+:root[data-theme="light"] .admin-nav,
+:root[data-theme="light"] .account-sidebar,
+:root[data-theme="light"] .account-sidebar nav { background:#e8edf2 !important; color:#172433 !important; border-color:var(--gi-border) !important; }
+:root[data-theme="light"] .admin-table { color:#172433; }
+:root[data-theme="light"] th { background:#e4eaf0 !important; color:#172433 !important; }
+:root[data-theme="light"] td,
+:root[data-theme="light"] tr { border-color:var(--gi-border) !important; }
+/* Restrained 3D depth: no layout rewrites or new runtime dependencies. */
+.product-card,.account-panel,.admin-block,.dashboard-grid>section,.price-card,.calc-card {
+  border:1px solid var(--gi-border); border-radius:var(--gi-radius);
+  box-shadow:var(--gi-shadow); transform:perspective(1000px) translateZ(0);
+  transition:transform .24s ease,box-shadow .24s ease,border-color .24s ease;
+}
+.product-card:hover,.account-panel:hover,.admin-block:hover,.dashboard-grid>section:hover,.price-card:hover,.calc-card:hover {
+  transform:perspective(1000px) translateY(-4px) rotateX(.35deg);
+  border-color:var(--gi-gold); box-shadow:0 22px 45px rgba(0,0,0,.15),0 0 0 1px rgba(201,151,62,.08);
+}
+button,.primary-button,.button-gold { transition:transform .18s ease,filter .18s ease,background .2s ease; }
+button:hover,.primary-button:hover,.button-gold:hover { filter:brightness(1.04); }
+@media(max-width:600px) {
+ .gi-theme-toggle { right:12px; bottom:12px; padding:10px 12px; }
+ .gi-theme-toggle-label { font-size:11px; }
+}
+@media(prefers-reduced-motion:reduce) {
+ *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; }
+}
