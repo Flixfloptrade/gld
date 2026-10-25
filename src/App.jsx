@@ -40,7 +40,7 @@ function Header({ count, user, onLogout }) {
   const location=useLocation();
   const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
   const [theme,setTheme]=useState(()=>{try{return localStorage.getItem('gi-theme')||'dark'}catch{return 'dark'}});
-  useEffect(()=>{document.documentElement.dataset.giTheme=theme;try{localStorage.setItem('gi-theme',theme)}catch{}},[theme]);
+  useEffect(()=>{const root=document.documentElement;root.dataset.giTheme=theme;root.dataset.theme=theme;root.style.colorScheme=theme;try{localStorage.setItem('gi-theme',theme)}catch{}},[theme]);
   const onAccountPage=location.pathname.startsWith('/account');
   const showPublicMobileMenu=!(user && onAccountPage);
   useEffect(()=>setMobileMenuOpen(false),[location.pathname,user?.id]);
