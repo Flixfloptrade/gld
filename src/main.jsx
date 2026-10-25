@@ -8,6 +8,6 @@ import './account.css';
 import './account-settings.css';
 import './saudi.css';
 import './responsive.css';
-import './three-dimensional.css';
+import './upgrade-theme.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>);
