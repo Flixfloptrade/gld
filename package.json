@@ -11,7 +11,8 @@
     "admin:start": "node admin-server.js",
     "admin:stack": "node scripts/admin-stack.js",
     "db:init": "node init-neon-db.js",
-    "db:test": "node test-neon.js"
+    "db:test": "node test-neon.js",
+    "test:securesmtp": "node scripts/test-securesmtp.js"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.1.1",
@@ -21,8 +22,7 @@
     "pg": "^8.23.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^7.6.0",
-    "resend": "^4.8.0"
+    "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
