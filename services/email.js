@@ -143,39 +143,52 @@ async function sendVerificationEmail({
     `&purpose=${encodeURIComponent(purpose)}`;
 
   const safeName = escapeHtml(firstName || 'there');
-  const isEmailChange = purpose === 'email-change';
-
-  const subject = isEmailChange
-    ? 'Confirm your new Gold Investment email'
-    : 'Verify your Gold Investment email';
-
-  const action = isEmailChange
-    ? 'confirm your new email address'
-    : 'verify your email address';
-
-  const buttonLabel = isEmailChange
-    ? 'Confirm email address'
-    : 'Verify email address';
-
+  const messages = {
+    signup: {
+      subject: 'Verify your Gold Investment email',
+      heading: 'Verify your email',
+      action: 'verify your email address',
+      button: 'Verify email address',
+    },
+    'email-change': {
+      subject: 'Confirm your new Gold Investment email',
+      heading: 'Confirm your new email',
+      action: 'confirm your new email address',
+      button: 'Confirm email address',
+    },
+    'password-change': {
+      subject: 'Confirm your Gold Investment password change',
+      heading: 'Confirm your password change',
+      action: 'confirm the password change requested for your account',
+      button: 'Confirm password change',
+    },
+    'profile-change': {
+      subject: 'Confirm your Gold Investment account changes',
+      heading: 'Confirm your account changes',
+      action: 'confirm the account detail changes requested for your account',
+      button: 'Confirm account changes',
+    },
+  };
+  const copy = messages[purpose] || messages.signup;
   const text =
     `Hello ${firstName || 'there'},\n\n` +
-    `Use this link to ${action}: ${link}\n\n` +
+    `Use this link to ${copy.action}: ${link}\n\n` +
     'This link expires in 30 minutes and can be used once. ' +
-    'If you did not request this, you can ignore this message.\n\n' +
+    'If you did not request this, you can ignore this message and secure your account.\n\n' +
     'Gold Investment';
 
   const html =
     '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#17202a;padding:28px">' +
     '<div style="max-width:560px;margin:auto;background:#fff;border:1px solid #e7dfcf;border-radius:16px;padding:32px">' +
     '<p style="color:#9a762c;font-weight:bold;letter-spacing:2px">GOLD INVESTMENT</p>' +
-    `<h1>${isEmailChange ? 'Confirm your new email' : 'Verify your email'}, ${safeName}</h1>` +
-    `<p>Use the button below to ${action}.</p>` +
-    `<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#b68b35;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px">${buttonLabel}</a></p>` +
+    `<h1>${copy.heading}, ${safeName}</h1>` +
+    `<p>Use the button below to ${copy.action}.</p>` +
+    `<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#b68b35;color:#fff;text-decoration:none;padding:13px 20px;border-radius:8px">${copy.button}</a></p>` +
     '<p>This link expires in 30 minutes and can be used once.</p>' +
-    '<p>If you did not request this, you can ignore this message.</p>' +
+    '<p>If you did not request this, you can ignore this message and secure your account.</p>' +
     '</div></body></html>';
 
-  return sendEmail({ to, subject, html, text });
+  return sendEmail({ to, subject: copy.subject, html, text });
 }
 
 async function sendPasswordResetEmail({ to, firstName, token }) {
