@@ -429,25 +429,15 @@ const server = http.createServer(async (req, res) => {
       const postalCode = String(input.postalCode || '').trim(); const password = String(input.password || ''); const confirmPassword = String(input.confirmPassword || '');
       if (password !== confirmPassword) return send(res, 400, { error: 'Passwords do not match. Please check both fields.' });
       if (firstName.length < 1 || firstName.length > 80 || lastName.length < 1 || lastName.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || country.length < 2 || country.length > 80 || address.length < 5 || address.length > 250 || city.length < 2 || city.length > 100 || region.length > 100 || postalCode.length > 24 || password.length < 12 || password.length > 200) return send(res, 400, { error: 'Enter valid account details and a password of at least 12 characters.' });
-      if (state.users.has(email)) return send(res, 409, { error: 'An account with this email already exists. Sign in or request a verification email.' });
-      if (!process.env.SECURESMTP_API_KEY) return send(res, 503, { error: 'Email verification is temporarily unavailable. Please try again later.' });
+      if (state.users.has(email)) return send(res, 409, { error: 'An account with this email already exists. Please sign in.' });
       const credentials = hashPassword(password);
-      const verification = createOneTimeToken();
-      const user = { id: crypto.randomUUID(), name, firstName, lastName, email, phone: '', country, address, city, region, postalCode, emailVerified: false, emailVerificationTokenHash: verification.hash, emailVerificationExpiresAt: verification.expiresAt, verificationStatus: 'not_started', ...credentials, createdAt: new Date().toISOString() };
+      const user = { id: crypto.randomUUID(), name, firstName, lastName, email, phone: '', country, address, city, region, postalCode, emailVerified: true, verificationStatus: 'not_started', ...credentials, createdAt: new Date().toISOString() };
       state.users.set(email, user); state.usersById.set(user.id, user);
-      try {
-        const { sendVerificationEmail } = require('./services/email');
-        const result = await sendVerificationEmail({ to: user.email, firstName: user.firstName, token: verification.token });
-        if (result?.skipped) throw new Error(result.reason || 'Email service not configured');
-        await log('customer_signup_verification_sent', { userId: user.id });
-      } catch (emailError) {
-        state.users.delete(email); state.usersById.delete(user.id);
-        await persistState();
-        console.error('Verification email failed for new customer:', user.id, emailError.message);
-        return send(res, 502, { error: 'We could not send your verification email. Check the address or try again shortly.' });
-      }
       await persistState();
-      return send(res, 201, { verificationRequired: true, email: user.email, message: 'Account created. Check your email and click the verification link before signing in.' });
+      const token = crypto.randomBytes(32).toString('base64url');
+      sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
+      await log('customer_signup', { userId: user.id });
+      return send(res, 201, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(token, req) });
     }
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {
       const retryAfter = hitRateLimit(req, 'login', 8, 15 * 60_000);
@@ -455,8 +445,14 @@ const server = http.createServer(async (req, res) => {
       const input = await body(req); const email = String(input.email || '').trim().toLowerCase(); const password = String(input.password || '');
       const user = state.users.get(email);
       if (!user || !passwordMatches(user, password)) return send(res, 401, { error: 'Email or password is incorrect.' });
-      // Legacy accounts created before email verification existed remain accessible; all new accounts must verify.
-      if (user.emailVerified !== true) return send(res, 403, { error: 'Please verify your email before signing in. You can request a new verification link.' , verificationRequired: true, email: user.email });
+      // Email verification is disabled: allow existing accounts to sign in and upgrade legacy unverified records.
+      if (user.emailVerified === false) {
+        user.emailVerified = true;
+        delete user.emailVerificationTokenHash;
+        delete user.emailVerificationExpiresAt;
+        await persistState();
+      }
+
       const token = crypto.randomBytes(32).toString('base64url'); sessions.set(token, { userId: user.id, expiresAt: Date.now() + 7 * 86400_000 });
       await log('customer_login', { userId: user.id });
       return send(res, 200, { user: publicUser(user) }, { 'Set-Cookie': sessionCookie(token, req) });
@@ -741,21 +737,23 @@ const server = http.createServer(async (req, res) => {
       if (!process.env.SECURESMTP_API_KEY) return send(res, 503, { error: 'Email confirmation is unavailable. No account changes were saved.' });
       const pending = createOneTimeToken();
       const emailChanged = email !== user.email;
-      try {
-        const { sendVerificationEmail } = require('./services/email');
-        const result = await sendVerificationEmail({ to: emailChanged ? email : user.email, firstName, token: pending.token, purpose: emailChanged ? 'email-change' : 'profile-change' });
-        if (result?.skipped) throw new Error(result.reason || 'Email service not configured');
-      } catch (error) {
-        console.error('Account change confirmation email failed:', error.message);
-        return send(res, 502, { error: 'We could not send a confirmation email. No account changes were saved.' });
-      }
+      const oldEmail = user.email;
+      user.firstName = firstName; user.lastName = lastName; user.name = `${firstName} ${lastName}`; user.phone = phone; user.country = country; user.address = address; user.city = city; user.region = region; user.postalCode = postalCode;
       if (emailChanged) {
-        user.pendingEmailVerification = { email, hash: pending.hash, expiresAt: pending.expiresAt, profile: changes };
-      } else {
-        user.pendingProfileChange = { hash: pending.hash, expiresAt: pending.expiresAt, changes };
+        state.users.delete(oldEmail);
+        user.email = email;
+        user.emailVerified = true;
+        delete user.pendingEmailVerification;
+        state.users.set(email, user);
+        for (const order of state.orders) if (order.customer?.email === oldEmail) order.customer.email = email;
+        for (const sale of state.sales) if (sale.customer?.email === oldEmail) sale.customer.email = email;
       }
+      for (const order of state.orders) if (order.customer?.email === user.email) Object.assign(order.customer, { name: user.name, country, address, city, region, postalCode });
+      for (const sale of state.sales) if (sale.customer?.email === user.email) Object.assign(sale.customer, { name: user.name, country });
+      await log('customer_profile_updated', { userId: user.id, emailChanged });
       await persistState();
-      return send(res, 200, { customer: publicUser(user), confirmationRequired: true, message: emailChanged ? `We sent a confirmation link to ${email}. Your email and account details will update only after you confirm it.` : `We sent a confirmation link to ${user.email}. Your account details will update only after you confirm it.` });
+      return send(res, 200, { customer: publicUser(user), message: 'Your account details were updated.' });
+
     }
     const paymentStatusMatch = url.pathname.match(/^\/api\/account\/orders\/([^/]+)\/payment-status$/);
     if (req.method === 'GET' && paymentStatusMatch) {
